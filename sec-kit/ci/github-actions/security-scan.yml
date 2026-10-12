@@ -111,7 +111,7 @@ jobs:
 
       # ---- 灵脉CodeAI：源码级 SAST（PR/push 增量，tag/定时 全量） ----
       - name: CodeAI SAST 扫描
-        if: ${{ vars.ENABLE_SAST != '0' }}
+        if: ${{ vars.ENABLE_SAST != '0' || vars.ENABLE_SAST == '' }}   # 注意: 未配置=执行(GitHub表达式''=='0'需显式排除)
         env:
           SAST_URL: ${{ vars.CODEAI_URL }}
           SAST_TOKEN: ${{ secrets.CODEAI_TOKEN }}
@@ -142,7 +142,7 @@ jobs:
         run: bash sec-kit/bin/codeai-incremental-scan.sh
 
       - name: 归档 SAST 产物
-        if: ${{ always() && vars.ENABLE_SAST != '0' }}
+        if: ${{ always() && (vars.ENABLE_SAST != '0' || vars.ENABLE_SAST == '') }}
         uses: actions/upload-artifact@v4
         with:
           name: sec-artifacts-sast
@@ -193,7 +193,7 @@ jobs:
           mkdir -p sec-results
 
       - name: SCA 组件依赖扫描（项目自动纳管 + SBOM/VEX 导出）
-        if: ${{ vars.ENABLE_SCA != '0' }}
+        if: ${{ vars.ENABLE_SCA != '0' || vars.ENABLE_SCA == '' }}
         env:
           _GATE_GLOBAL: ${{ vars.SECURITY_GATE }}
           _COMP_DEPS: ${{ vars.SCA_DEPS_GATE }}
@@ -231,7 +231,7 @@ jobs:
 
       # ---- 源鉴SCA：制品/固件成分扫描（嵌入式仓库专用，仓库变量门控） ----
       - name: SCA 制品扫描（嵌入式，变量门控）
-        if: ${{ vars.ENABLE_SCA != '0' && vars.ENABLE_SCA_ARTIFACT == '1' }}
+        if: ${{ (vars.ENABLE_SCA != '0' || vars.ENABLE_SCA == '') && vars.ENABLE_SCA_ARTIFACT == '1' }}
         env:
           _GATE_GLOBAL: ${{ vars.SECURITY_GATE }}
           _COMP_ART: ${{ vars.SCA_ARTIFACT_GATE }}
@@ -254,7 +254,7 @@ jobs:
           bash sec-kit/bin/sca-scan.sh artifact
 
       - name: 归档 SCA 产物
-        if: ${{ always() && vars.ENABLE_SCA != '0' }}
+        if: ${{ always() && (vars.ENABLE_SCA != '0' || vars.ENABLE_SCA == '') }}
         uses: actions/upload-artifact@v4
         with:
           name: sec-artifacts-sca
@@ -284,9 +284,14 @@ jobs:
       - name: 合并结果目录
         run: |
           mkdir -p sec-results
-          # 两个 job 的产物都带 sec-results/ 前缀，合并到一个目录供通知与总归档
-          find all-results -type f -path '*sec-results/*' -exec cp -f {} sec-results/ \; 2>/dev/null || true
-          find all-results -name 'sast_report.pdf' -exec cp -f {} . \; 2>/dev/null || true
+          # 兼容两种产物布局: 多路径上传(zip内含 sec-results/ 嵌套) 与 单目录上传(zip内平铺)
+          for d in all-results/*/; do
+            [ -d "${d}sec-results" ] && cp -a "${d}sec-results/." sec-results/
+          done
+          [ -d all-results/sec-artifacts-sca ] && [ ! -d all-results/sec-artifacts-sca/sec-results ] \
+            && cp -a all-results/sec-artifacts-sca/. sec-results/ || true
+          find all-results -maxdepth 3 -name 'sast_report.pdf' -exec cp -f {} . \; 2>/dev/null || true
+          echo "---- 合并后的 sec-results ----"
           ls -la sec-results/ || true
 
       - name: 推送聚合通知（钉钉/企微/飞书）

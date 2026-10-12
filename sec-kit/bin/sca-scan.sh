@@ -379,7 +379,30 @@ do_scan() {
   echo "======================================================"
   [ -n "${GATE_DETAIL:-}" ] && echo "---- 红线明细 ----" && echo "$GATE_DETAIL"
 
+  # ---- 任务统计(组件/漏洞计数, 供通知卡片与下游消费; 平台聚合滞后约30-60s, 就绪即断) ----
+  STAT_JSON=""
+  if command -v curl >/dev/null 2>&1; then
+    for _try in 1 2 3 4 5 6 7 8; do
+      _stat=$(curl -s -k --max-time 30 -H "OpenApiUserToken: ${SCA_USER_TOKEN}" \
+        "${API_ROOT}/openapi/v1/task/${TASK_ID}" 2>/dev/null)
+      if echo "$_stat" | grep -q '"code":0'; then
+        STAT_JSON=$(echo "$_stat" | jq -c '{componentNum, vulNum, vulSeriousNum, vulHighNum, vulMediumNum, vulLowNum, licenseNum} | with_entries(select(.value!=null))' 2>/dev/null)
+        # vulNum 到位即认为统计已聚合完成
+        [ "$(echo "$STAT_JSON" | jq -r '.vulNum // empty' 2>/dev/null)" != "" ] && break
+      fi
+      sleep 10
+    done
+    if [ "$(echo "$STAT_JSON" | jq -r '.vulNum // empty' 2>/dev/null)" != "" ]; then
+      log "任务统计: 组件$(echo "$STAT_JSON"|jq -r '.componentNum') 漏洞$(echo "$STAT_JSON"|jq -r '.vulNum')(严重$(echo "$STAT_JSON"|jq -r '.vulSeriousNum // 0')/高$(echo "$STAT_JSON"|jq -r '.vulHighNum // 0')/中$(echo "$STAT_JSON"|jq -r '.vulMediumNum // 0')/低$(echo "$STAT_JSON"|jq -r '.vulLowNum // 0'))"
+    else
+      warn "任务统计未就绪(跳过统计字段, 不影响扫描结论)"
+      STAT_JSON=""
+    fi
+  fi
+
   # ---- 结果JSON落盘 ----
+  STAT_JSON_ARG='{}'
+  [ -n "$STAT_JSON" ] && STAT_JSON_ARG="$STAT_JSON"
   if [ -n "${RESULT_JSON_FILE:-}" ]; then
     mkdir -p "$(dirname "$RESULT_JSON_FILE")" 2>/dev/null || true
     if [ "$HAVE_JQ" = "1" ]; then
@@ -387,8 +410,9 @@ do_scan() {
         --arg gate "$GATE_RESULT" --arg url "$RESULT_URL" --arg block "$BLOCK" \
         --arg branch "${GIT_BRANCH:-${GIT_BRANCH_NAME}}" \
         --arg commit "${GIT_COMMIT:-$(git rev-parse --short HEAD 2>/dev/null || echo '')}" \
+        --argjson stat "$STAT_JSON_ARG" \
         '{product:"sca", mode:"'"$mode"'", appName:$app, taskId:$tid, appId:$appid, gate:$gate,
-          block:$block, resultUrl:$url, branch:$branch, commit:$commit, scanTime:(now|todate)}' \
+          block:$block, resultUrl:$url, branch:$branch, commit:$commit, scanTime:(now|todate)} + $stat' \
         > "$RESULT_JSON_FILE" 2>/dev/null || true
     else
       printf '{"product":"sca","mode":"%s","appName":"%s","taskId":"%s","appId":"%s","gate":"%s","block":"%s","resultUrl":"%s"}\n' \

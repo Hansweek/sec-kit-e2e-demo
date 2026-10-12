@@ -1,0 +1,24 @@
+[SCA] 14:25:22 获取平台特征文件类型 ...
+[SCA] 14:25:24 打包完成: 164K，开始分片上传 ...
+[SCA] 14:25:26 提交检测任务 ...
+[SCA] 14:25:28 任务已提交 taskId=25 应用ID=15
+[SCA] 14:25:28 结果页: https://sca.igovee.com:30001/open-page/89adfe41ad694ab9bd78b71d14aee85c/CAD09167E80F4D621008009B3C1A6F8C/cicd/25/overview
+[SCA] 14:25:49 检测完成 (耗时21s)
+======================================================
+  源鉴SCA deps 扫描结果  taskId=25  app=sec-kit-e2e-demo-main
+  质量红线: 未启用
+  结果页: https://sca.igovee.com:30001/open-page/89adfe41ad694ab9bd78b71d14aee85c/CAD09167E80F4D621008009B3C1A6F8C/cicd/25/overview
+======================================================
+[SCA] [警告] 任务统计未就绪(跳过统计字段, 不影响扫描结论)
+[SCA] 14:26:13 自动导出 SBOM+VEX (SBOM_TYPES=spdx vex)...
+[SCA-SBOM] 14:26:13 ==== SBOM+VEX 导出开始 (应用=sec-kit-e2e-demo-main appId=15) ====
+[SCA-SBOM] 14:26:14 SBOM 生成已受理: sbom-sec-kit-e2e-demo-main-spdx-20261012142613 (sbomType=1)
+[SCA-SBOM] 14:26:15 VEX 生成已受理: vex-sec-kit-e2e-demo-main-20261012142613 (format=2)
+[SCA-SBOM] 14:26:32 等待生成中... 15s (剩余 2 项)
+[SCA-SBOM] 14:26:35 已下载: sec-results/sbom_sec-kit-e2e-demo-main.spdx.json ( 36K, 记录id=31)
+[SCA-SBOM] 14:26:37 已下载: sec-results/vex_sec-kit-e2e-demo-main.csaf.json (4.0K, 记录id=32)
+[SCA-SBOM] 14:26:37 SPDX 校验通过: 16 个组件, 版本 SPDX-2.3
+[SCA-SBOM] 14:26:37 产物清单已写入: sec-results/sbom-info.json
+SBOM_INFO_FILE=sec-results/sbom-info.json
+SBOM_FILES=sec-results/sbom_sec-kit-e2e-demo-main.spdx.json sec-results/vex_sec-kit-e2e-demo-main.csaf.json 
+[SCA] 14:26:37 SBOM/VEX 产物已就绪(见 sec-results)

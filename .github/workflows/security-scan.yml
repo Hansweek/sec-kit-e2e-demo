@@ -284,9 +284,14 @@ jobs:
       - name: 合并结果目录
         run: |
           mkdir -p sec-results
-          # 两个 job 的产物都带 sec-results/ 前缀，合并到一个目录供通知与总归档
-          find all-results -type f -path '*sec-results/*' -exec cp -f {} sec-results/ \; 2>/dev/null || true
-          find all-results -name 'sast_report.pdf' -exec cp -f {} . \; 2>/dev/null || true
+          # 兼容两种产物布局: 多路径上传(zip内含 sec-results/ 嵌套) 与 单目录上传(zip内平铺)
+          for d in all-results/*/; do
+            [ -d "${d}sec-results" ] && cp -a "${d}sec-results/." sec-results/
+          done
+          [ -d all-results/sec-artifacts-sca ] && [ ! -d all-results/sec-artifacts-sca/sec-results ] \
+            && cp -a all-results/sec-artifacts-sca/. sec-results/ || true
+          find all-results -maxdepth 3 -name 'sast_report.pdf' -exec cp -f {} . \; 2>/dev/null || true
+          echo "---- 合并后的 sec-results ----"
           ls -la sec-results/ || true
 
       - name: 推送聚合通知（钉钉/企微/飞书）

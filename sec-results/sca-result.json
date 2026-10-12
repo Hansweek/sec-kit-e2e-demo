@@ -1,0 +1,20 @@
+{
+ "product": "sca",
+ "mode": "deps",
+ "appName": "sec-kit-e2e-demo-main",
+ "taskId": "25",
+ "appId": "15",
+ "gate": "未启用",
+ "block": "false",
+ "resultUrl": "https://sca.igovee.com:30001/open-page/89adfe41ad694ab9bd78b71d14aee85c/CAD09167E80F4D621008009B3C1A6F8C/cicd/25/overview",
+ "branch": "main",
+ "commit": "41f371b",
+ "scanTime": "2026-10-12T06:26:13Z",
+ "componentNum": 16,
+ "vulNum": 60,
+ "vulSeriousNum": 11,
+ "vulHighNum": 24,
+ "vulMediumNum": 24,
+ "vulLowNum": 1,
+ "licenseNum": 6
+}

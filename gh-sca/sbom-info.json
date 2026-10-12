@@ -1,0 +1,14 @@
+{
+  "appName": "sec-kit-e2e-demo-main",
+  "generatedAt": "2026-10-12T06:07:58Z",
+  "files": [
+    {
+      "name": "sbom_sec-kit-e2e-demo-main.spdx.json",
+      "desc": "SPDX 2.3 组件清单"
+    },
+    {
+      "name": "vex_sec-kit-e2e-demo-main.csaf.json",
+      "desc": "CSAF 2.0 VEX 漏洞交换"
+    }
+  ]
+}

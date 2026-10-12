@@ -1,0 +1,13 @@
+{
+  "product": "sca",
+  "mode": "deps",
+  "appName": "sec-kit-e2e-demo-main",
+  "taskId": "23",
+  "appId": "13",
+  "gate": "未启用",
+  "block": "false",
+  "resultUrl": "https://sca.igovee.com:30001/open-page/89adfe41ad694ab9bd78b71d14aee85c/C448B3ECAD9EF32958C84CC53E2151D2/cicd/23/overview",
+  "branch": "main",
+  "commit": "41f371b40ec5b7832d2f09f6b342ce59d5407f02",
+  "scanTime": "2026-10-12T06:07:42Z"
+}
