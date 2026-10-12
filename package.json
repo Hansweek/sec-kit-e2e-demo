@@ -1,0 +1,9 @@
+{
+  "name": "e2e-demo-app",
+  "version": "1.0.0",
+  "dependencies": {
+    "lodash": "4.17.15",
+    "moment": "2.24.0",
+    "node-serialize": "0.0.4"
+  }
+}

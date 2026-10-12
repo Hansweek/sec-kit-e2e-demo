@@ -1,0 +1,53 @@
+智岩科技（Govee）· 研发安全工具链 GitHub × 云效 双平台对接交付包（2026-10-10）
+====================================================================
+
+两个平台共用同一套 sec-kit/ 核心脚本与变量契约，升级只换 bin/，封装层不动。
+
+本包内容与放置位置：
+
+  1) ci/github-actions/security-scan.yml（GitHub Actions）
+     → 复制到每个试点仓库的 .github/workflows/ 下，合入默认分支（main）
+       （必须进默认分支：tag 触发与每日定时只认默认分支上的工作流文件）
+
+  2) ci/yunxiao/（阿里云效 Flow）
+     → yunxiao-security-step.sh：统一接入步骤（SAST + SCA 一条命令，能力与
+       GitHub 封装对齐）。仓库根放入 sec-kit/ 后，流水线"自定义 Shell"步骤执行：
+       bash sec-kit/ci/yunxiao/yunxiao-security-step.sh
+     → 云效Flow接入指南.md：云效界面配置（主流水线+定时巡检两条线、变量表、
+       产物归档、钉钉机器人、FAQ）
+     → ⚠ 与平台生成的 aliyun.sh（SAST 基础链路兜底）不可同时挂载，会重复扫描；
+       无 sec-kit 时的轻量兜底才用 aliyun.sh
+
+  3) bin/ 四个扫描脚本（即 sec-kit/，整个目录拷入仓库根目录）
+     → codeai-incremental-scan.sh   CodeAI 源码扫描（push 增量 / tag 全量 / 门禁 / 钉钉）
+     → codeai-scan.sh               CodeAI 全量扫描备用版（一般不用，故障兜底）
+     → sca-scan.sh                  源鉴SCA 依赖/制品扫描（含项目自动创建）
+     → sca-sbom.sh                  SBOM 导出（CycloneDX）
+     纯脚本、无任何密钥，可直接提交仓库。GitHub 与云效执行同一份文件。
+
+  4) config.env.example
+     → 不进仓库。仅作 CI 变量命名对照表（GitHub Variables/Secrets 对照见文件末节；
+       云效变量名与主表一致，配到流水线"变量与缓存"，敏感项勾"私密"）。
+
+  5) docs/客户使用指引.md ＋ docs/灵脉CodeAI×源鉴SCA对接GitHub操作指引V1.0.docx
+     → 管理员操作文档（GitHub 一页纸速查版 + 详细版，内容一致）。
+       云效以 ci/yunxiao/云效Flow接入指南.md 为准。
+
+上手顺序（GitHub，详见《客户使用指引》）：
+  配 Secrets（3 个）→ 配 Variables（2 个必填）→ 放文件合入 main → 提测试 PR 验证
+
+上手顺序（云效，详见《云效Flow接入指南》）：
+  仓库根放 sec-kit/ → 建"主流水线 + 定时巡检"两条流水线 → 变量与缓存配变量
+  （敏感项勾私密）→ 自定义 Shell 步骤执行 yunxiao-security-step.sh
+  → 构建产物勾 sast_report.pdf 与 sec-results/
+
+项目维度归属（两个平台行为一致）：
+  SAST 配 SAST_PROJECT_NAME=仓库名（GitHub 侧变量名 CODEAI_PROJECT_NAME）→
+  平台无同名项目时自动创建，应用与扫描记录归入该项目；
+  SCA 的 provision 按仓库名自动建项目，天生项目制，零配置。
+
+验收标志：流水线绿 + 产物含报告 + 钉钉收卡片 + 第二次提交日志出现"增量扫描"
+（GitHub 看 Actions Artifact；云效看构建产物，并在平台"项目管理"下出现对应项目）。
+
+问题排查：GitHub 见《客户使用指引》第五节；云效见《云效Flow接入指南》第五节；
+解决不了请提供流水线日志最后 50 行联系悬镜技术支持。

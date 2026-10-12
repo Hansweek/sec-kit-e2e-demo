@@ -1,0 +1,311 @@
+# ============================================================================
+#  Govee 研发安全工具链 · GitHub Actions 封装 v2（SAST 与 SCA 并行，缩短流水线墙钟时间）
+# ----------------------------------------------------------------------------
+#  定位: 本文件不含业务逻辑与密钥，只做"触发 + 变量注入 + 调核心脚本"。
+#  结构:
+#    job1 sast   : CodeAI 源码扫描(增量) + 项目自动纳管v2(令牌归属人=PM/部门,
+#                  仓库协作人→项目成员) + 详情报告 + 全缺陷跟踪路径导出
+#    job2 sca    : SCA 依赖扫描 + 项目自动纳管v2 + 检测报告 + SBOM(SPDX)+VEX 导出
+#    job3 report : 聚合两个 job 的产物统一归档 + 推送聚合钉钉卡片(sec-notify)
+#  前提: 客户内网自建 runner（能连通 CodeAI/SCA 平台地址和钉钉 webhook 公网地址），
+#        仓库内已放置 sec-kit/。schedule 仅对默认分支上的本文件生效。
+#  触发面(故意收敛, 勿随意加回): 功能分支只走 PR 流水线，push 只挂主干+tag。
+#  变量: 非敏感项配 GitHub → Settings → Secrets and variables → Actions → Variables
+#        令牌等敏感项配同页 Secrets。命名对照见 ../config.env.example 末节。
+# ============================================================================
+name: security-scan
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]            # 换成仓库实际默认分支；功能分支一律由 PR 管道覆盖
+    tags: ["**"]
+  schedule:
+    - cron: "30 1 * * *"        # UTC 01:30 = 北京 09:30，扫默认分支，按需调整
+  workflow_dispatch:
+    inputs:
+      force_full:
+        description: "强制全量扫描(不走增量)"
+        type: boolean
+        default: false
+
+# 同一 PR 的后续 push 取消前一次未完成的扫描，省引擎并发；push 主干不取消(逐次留档)
+concurrency:
+  group: sec-scan-${{ github.event_name }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  # ==========================================================================
+  # Job 1/3 · 灵脉CodeAI SAST（与 SCA 并行执行）
+  # ==========================================================================
+  sast:
+    runs-on: [self-hosted]
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0            # 完整克隆：保证跨提交 git diff 增量可用(勿改)
+
+      - name: 依赖自检 (curl/jq/zip/git/python3)
+        run: |
+          miss=0
+          for c in curl jq zip git python3; do command -v $c >/dev/null 2>&1 || miss=1; done
+          [ "$miss" = "0" ] || { sudo apt-get update -qq 2>/dev/null; for c in curl jq zip git python3; do
+            command -v $c >/dev/null 2>&1 || sudo apt-get install -y "$c" 2>/dev/null || sudo yum install -y "$c"; done; }
+          for c in curl jq zip git python3; do command -v $c >/dev/null 2>&1 || { echo "缺少 $c 且自动安装失败，请在 runner 上预装"; exit 1; }; done
+
+      - name: 计算触发模式与应用名 + 解析仓库协作人
+        env:
+          _GATE_GLOBAL: ${{ vars.SECURITY_GATE }}
+          _COMP_CODEAI: ${{ vars.CODEAI_GATE_ENABLED }}
+          GH_TOKEN: ${{ github.token }}                       # GITHUB_TOKEN: 尝试拉协作人(权限不足自动降级)
+          GH_MEMBER_PAT: ${{ secrets.GH_MEMBER_TOKEN }}       # 可选: 只读PAT(协作人接口403时的兜底)
+        run: |
+          ff=0
+          [ "${{ github.event_name }}" = "schedule" ] && ff=1
+          [ "${{ inputs.force_full }}" = "true" ] && ff=1
+          echo "FORCE_FULL=${ff}" >> "$GITHUB_ENV"
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "CI_COMMIT_TAG=${{ github.ref_name }}" >> "$GITHUB_ENV"
+          else
+            echo "CI_COMMIT_TAG=" >> "$GITHUB_ENV"
+          fi
+          # PR 事件的 ref_name 是 "N/merge"，应用名/分支名一律取 head_ref(源分支)
+          br="${{ github.head_ref || github.ref_name }}"
+          app="${{ github.event.repository.name }}-$(echo "${br}" | tr '/ ' '__')"
+          echo "SCAN_BRANCH=${br}" >> "$GITHUB_ENV"
+          echo "APP_NAME=${app}" >> "$GITHUB_ENV"
+          echo "REPO_NAME=${{ github.event.repository.name }}" >> "$GITHUB_ENV"
+          # ---- 门禁开关解析(总开关+组件级覆盖) ----
+          _gnorm() { case "${1:-}" in 1|true|True|TRUE|y|Y|yes) echo 1;; 0|false|False|FALSE|n|N|no) echo 0;; *) echo "";; esac; }
+          _gres() { _c=$(_gnorm "$2"); if [ -n "$_c" ]; then echo "$_c"; else _g=$(_gnorm "$1"); [ -n "$_g" ] && echo "$_g" || echo 0; fi; }
+          echo "GATE_ENABLED=$(_gres "$_GATE_GLOBAL" "$_COMP_CODEAI")" >> "$GITHUB_ENV"
+          # ---- 仓库协作人列表 → 平台项目成员(自动纳管v2) ----
+          # 优先 GITHUB_TOKEN；403 时用可选 GH_MEMBER_PAT；再不行用手工变量 PROJECT_MEMBERS
+          members=""
+          fetch_members() {
+            curl -s --max-time 20 -H "Authorization: Bearer $1" -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${{ github.repository }}/collaborators?per_page=100" \
+            | jq -r 'if type=="array" then [.[].login] | join(",") else empty end' 2>/dev/null
+          }
+          members=$(fetch_members "${GH_TOKEN}")
+          if [ -z "$members" ] && [ -n "${GH_MEMBER_PAT:-}" ]; then
+            echo "[提示] GITHUB_TOKEN 无协作人读权限(403)，改用 GH_MEMBER_PAT"
+            members=$(fetch_members "${GH_MEMBER_PAT}")
+          fi
+          if [ -z "$members" ]; then
+            members="${PROJECT_MEMBERS_MANUAL:-}"    # 可选: 仓库变量 PROJECT_MEMBERS 手工维护(逗号分隔)
+          fi
+          if [ -n "$members" ]; then
+            echo "REPO_MEMBERS=${members}" >> "$GITHUB_ENV"
+            echo "仓库协作人(将自动加入平台项目成员): ${members}"
+          else
+            echo "REPO_MEMBERS=" >> "$GITHUB_ENV"
+            echo "[提示] 未取到协作人列表(项目成员仅含令牌归属人；如需全员纳管配置 GH_MEMBER_PAT secret 或 PROJECT_MEMBERS 变量)"
+          fi
+          mkdir -p sec-results
+
+      # ---- 灵脉CodeAI：源码级 SAST（PR/push 增量，tag/定时 全量） ----
+      - name: CodeAI SAST 扫描
+        if: ${{ vars.ENABLE_SAST != '0' }}
+        env:
+          SAST_URL: ${{ vars.CODEAI_URL }}
+          SAST_TOKEN: ${{ secrets.CODEAI_TOKEN }}
+          SAST_PROJECT_ID: ${{ vars.CODEAI_PROJECT_ID }}
+          SAST_PROJECT_NAME: ${{ vars.CODEAI_PROJECT_NAME || github.event.repository.name }}  # 未配置时项目名=仓库名(自动创建)
+          SAST_USERNAME: ${{ vars.SAST_USERNAME }}              # 令牌归属人平台用户名 → 自动设为项目经理+归属其部门
+          SAST_PROJECT_MEMBERS: ${{ env.REPO_MEMBERS }}         # 仓库协作人 → 平台项目成员(创建项目时生效)
+          FORCE_FULL: ${{ env.FORCE_FULL }}
+          CI_COMMIT_TAG: ${{ env.CI_COMMIT_TAG }}
+          APP_NAME: ${{ env.APP_NAME }}
+          GATE_ENABLED: ${{ env.GATE_ENABLED }}
+          GATE_SUPER: ${{ vars.CODEAI_GATE_SUPER }}
+          GATE_HIGH: ${{ vars.CODEAI_GATE_HIGH }}
+          GATE_MIDDLE: ${{ vars.CODEAI_GATE_MIDDLE }}
+          GATE_LOW: ${{ vars.CODEAI_GATE_LOW }}
+          BY_PASS: "1"
+          BY_PASS_TIMEOUT_MINUTES: ${{ vars.CODEAI_TIMEOUT_MINUTES }}
+          TLS_INSECURE: ${{ vars.TLS_INSECURE || '0' }}
+          SAST_REPORT_KIND: DEFECT                              # DEFECT=详情报告(每缺陷类型全量条目)
+          EXPORT_DEFECTS: "1"                                   # 全缺陷+全跟踪路径 JSON/HTML 归档
+          RESULT_JSON_FILE: sec-results/codeai-result.json
+          GIT_BRANCH: ${{ env.SCAN_BRANCH }}
+          GIT_COMMIT: ${{ github.sha }}
+          GIT_AUTHOR: ${{ github.actor }}
+          BUILD_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          # 注意: 通知由 report job 统一聚合发送，扫描脚本不再单独推送
+          NOTIFY_WEBHOOK: ""
+        run: bash sec-kit/bin/codeai-incremental-scan.sh
+
+      - name: 归档 SAST 产物
+        if: ${{ always() && vars.ENABLE_SAST != '0' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: sec-artifacts-sast
+          path: |
+            sast_report.pdf
+            sec-results/
+          retention-days: 30
+          if-no-files-found: ignore
+
+  # ==========================================================================
+  # Job 2/3 · 源鉴SCA（与 SAST 并行执行）
+  # ==========================================================================
+  sca:
+    runs-on: [self-hosted]
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 依赖自检 (curl/jq/python3)
+        run: |
+          miss=0
+          for c in curl jq python3; do command -v $c >/dev/null 2>&1 || miss=1; done
+          [ "$miss" = "0" ] || { sudo apt-get update -qq 2>/dev/null; for c in curl jq python3; do
+            command -v $c >/dev/null 2>&1 || sudo apt-get install -y "$c" 2>/dev/null || sudo yum install -y "$c"; done; }
+          for c in curl jq python3; do command -v $c >/dev/null 2>&1 || { echo "缺少 $c 且自动安装失败，请在 runner 上预装"; exit 1; }; done
+
+      - name: 计算应用名与协作人
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_MEMBER_PAT: ${{ secrets.GH_MEMBER_TOKEN }}
+        run: |
+          br="${{ github.head_ref || github.ref_name }}"
+          echo "SCAN_BRANCH=${br}" >> "$GITHUB_ENV"
+          echo "APP_NAME=${{ github.event.repository.name }}-$(echo "${br}" | tr '/ ' '__')" >> "$GITHUB_ENV"
+          echo "REPO_NAME=${{ github.event.repository.name }}" >> "$GITHUB_ENV"
+          members=""
+          fetch_members() {
+            curl -s --max-time 20 -H "Authorization: Bearer $1" -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${{ github.repository }}/collaborators?per_page=100" \
+            | jq -r 'if type=="array" then [.[].login] | join(",") else empty end' 2>/dev/null
+          }
+          members=$(fetch_members "${GH_TOKEN}")
+          [ -z "$members" ] && [ -n "${GH_MEMBER_PAT:-}" ] && members=$(fetch_members "${GH_MEMBER_PAT}")
+          [ -z "$members" ] && members="${PROJECT_MEMBERS_MANUAL:-}"
+          echo "REPO_MEMBERS=${members}" >> "$GITHUB_ENV"
+          mkdir -p sec-results
+
+      - name: SCA 组件依赖扫描（项目自动纳管 + SBOM/VEX 导出）
+        if: ${{ vars.ENABLE_SCA != '0' }}
+        env:
+          _GATE_GLOBAL: ${{ vars.SECURITY_GATE }}
+          _COMP_DEPS: ${{ vars.SCA_DEPS_GATE }}
+          SCA_URL: ${{ vars.SCA_URL }}
+          SCA_USER_TOKEN: ${{ secrets.SCA_USER_TOKEN }}
+          SCA_PROJECT_NAME: ${{ vars.SCA_PROJECT_NAME || github.event.repository.name }}  # 未配置时SCA项目=仓库名
+          SCA_USERNAME: ${{ vars.SCA_USERNAME }}               # 令牌归属人 → 项目经理+归属部门
+          SCA_PROJECT_MEMBERS: ${{ env.REPO_MEMBERS }}         # 仓库协作人 → 项目成员
+          APP_NAME: ${{ env.APP_NAME }}
+          BY_PASS: "1"
+          TLS_INSECURE: ${{ vars.TLS_INSECURE || '0' }}
+          TIMEOUT_MINUTES: ${{ vars.SCA_TIMEOUT_MINUTES }}
+          AUTO_SBOM: "1"                                       # 扫描完成自动导出 SBOM(SPDX)+VEX
+          SBOM_TYPES: ${{ vars.SBOM_TYPES || 'spdx vex' }}
+          GIT_BRANCH: ${{ env.SCAN_BRANCH }}
+          GIT_COMMIT: ${{ github.sha }}
+          GIT_AUTHOR: ${{ github.actor }}
+        run: |
+          # 门禁开关解析(总开关+组件级覆盖)
+          _gnorm() { case "${1:-}" in 1|true|True|TRUE|y|Y|yes) echo 1;; 0|false|False|FALSE|n|N|no) echo 0;; *) echo "";; esac; }
+          _gres() { _c=$(_gnorm "$2"); if [ -n "$_c" ]; then echo "$_c"; else _g=$(_gnorm "$1"); [ -n "$_g" ] && echo "$_g" || echo 0; fi; }
+          export DEPS_GATE=$(_gres "${_GATE_GLOBAL}" "${_COMP_DEPS}")
+          export RESULT_JSON_FILE=sec-results/sca-result.json
+          mkdir -p sec-results
+          bash sec-kit/bin/sca-scan.sh provision   # 建或复用项目(v2自动纳管), 产出 provision.env
+          source ./provision.env                   # 提供 SCA_PROJECT_ID / SCA_PROJECT_TOKEN
+          bash sec-kit/bin/sca-scan.sh deps        # 依赖扫描 + 自动 SBOM(SPDX)+VEX 导出
+          # 检测报告(Excel)生成归档
+          if [ -f sec-results/sca-result.json ]; then
+            export SCA_APP_ID="$(jq -r '.appId // empty' sec-results/sca-result.json 2>/dev/null)"
+            export TASK_ID="$(jq -r '.taskId // empty' sec-results/sca-result.json 2>/dev/null)"
+            echo "结果页(可分享, 含SBOM入口): $(jq -r '.resultUrl // empty' sec-results/sca-result.json 2>/dev/null)"
+            if [ -n "${SCA_APP_ID:-}" ]; then bash sec-kit/bin/sca-scan.sh report || echo "[提示] 报告生成失败(可稍后在平台手动导出)"; fi
+          fi
+
+      # ---- 源鉴SCA：制品/固件成分扫描（嵌入式仓库专用，仓库变量门控） ----
+      - name: SCA 制品扫描（嵌入式，变量门控）
+        if: ${{ vars.ENABLE_SCA != '0' && vars.ENABLE_SCA_ARTIFACT == '1' }}
+        env:
+          _GATE_GLOBAL: ${{ vars.SECURITY_GATE }}
+          _COMP_ART: ${{ vars.SCA_ARTIFACT_GATE }}
+          SCA_URL: ${{ vars.SCA_URL }}
+          SCA_USER_TOKEN: ${{ secrets.SCA_USER_TOKEN }}
+          SCA_PROJECT_NAME: ${{ vars.SCA_PROJECT_NAME || github.event.repository.name }}
+          APP_NAME: ${{ env.APP_NAME }}
+          SCAN_DIR: ${{ vars.SCA_ARTIFACT_DIR }}            # 产物目录(如 ./dist)；空=工作区根
+          SCAN_PATTERNS: ${{ vars.SCAN_PATTERNS }}          # 如 .*\.(bin|hex|img|tar\.gz)$
+          BY_PASS: "1"
+          TIMEOUT_MINUTES: ${{ vars.SCA_TIMEOUT_MINUTES }}
+          RESULT_JSON_FILE: sec-results/sca-result-artifact.json
+          GIT_BRANCH: ${{ env.SCAN_BRANCH }}
+          GIT_COMMIT: ${{ github.sha }}
+        run: |
+          _gnorm() { case "${1:-}" in 1|true|True|TRUE|y|Y|yes) echo 1;; 0|false|False|FALSE|n|N|no) echo 0;; *) echo "";; esac; }
+          _gres() { _c=$(_gnorm "$2"); if [ -n "$_c" ]; then echo "$_c"; else _g=$(_gnorm "$1"); [ -n "$_g" ] && echo "$_g" || echo 0; fi; }
+          export ARTIFACT_GATE=$(_gres "${_GATE_GLOBAL}" "${_COMP_ART}")
+          [ -f ./provision.env ] && source ./provision.env || bash sec-kit/bin/sca-scan.sh provision
+          bash sec-kit/bin/sca-scan.sh artifact
+
+      - name: 归档 SCA 产物
+        if: ${{ always() && vars.ENABLE_SCA != '0' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: sec-artifacts-sca
+          path: sec-results/
+          retention-days: 30
+          if-no-files-found: ignore
+
+  # ==========================================================================
+  # Job 3/3 · 聚合归档 + 统一钉钉通知（SAST/SCA 各自完成后立即触发）
+  # ==========================================================================
+  report:
+    needs: [sast, sca]
+    if: ${{ always() && !cancelled() }}
+    runs-on: [self-hosted]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: sec-kit
+
+      - name: 下载扫描产物
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          path: all-results
+
+      - name: 合并结果目录
+        run: |
+          mkdir -p sec-results
+          # 两个 job 的产物都带 sec-results/ 前缀，合并到一个目录供通知与总归档
+          find all-results -type f -path '*sec-results/*' -exec cp -f {} sec-results/ \; 2>/dev/null || true
+          find all-results -name 'sast_report.pdf' -exec cp -f {} . \; 2>/dev/null || true
+          ls -la sec-results/ || true
+
+      - name: 推送聚合通知（钉钉/企微/飞书）
+        env:
+          NOTIFY_WEBHOOK: ${{ secrets.NOTIFY_WEBHOOK || secrets.DINGTALK_WEBHOOK }}
+          NOTIFY_TYPE: ${{ vars.NOTIFY_TYPE || 'dingtalk' }}
+          NOTIFY_SECRET: ${{ secrets.NOTIFY_SECRET || secrets.DINGTALK_SECRET }}
+          NOTIFY_AT: ${{ vars.DINGTALK_AT }}
+          TLS_INSECURE: ${{ vars.TLS_INSECURE || '0' }}
+          BUILD_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RESULT_DIR: sec-results
+        run: bash sec-kit/bin/sec-notify.sh
+
+      - name: 总归档（报告+SBOM/VEX+全缺陷跟踪）
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: |
+            sast_report.pdf
+            sec-results/
+          retention-days: 30
+          if-no-files-found: ignore
