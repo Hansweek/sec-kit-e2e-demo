@@ -53,6 +53,23 @@ export DEPS_GATE=$(_gres "${SECURITY_GATE:-}" "${SCA_DEPS_GATE:-}")
 export ARTIFACT_GATE=$(_gres "${SECURITY_GATE:-}" "${SCA_ARTIFACT_GATE:-}")
 log "门禁: SAST=${GATE_ENABLED} SCA依赖=${DEPS_GATE} SCA制品=${ARTIFACT_GATE} (1=阻断 0=仅告警)"
 
+# ---------------- ②½ 必填变量集中预检(缺什么一次说清, 不让用户跑到深处才报错) ----------------
+_missing=""
+if [ "${ENABLE_SAST:-1}" != "0" ]; then
+  [ -n "${SAST_URL:-}" ]   || _missing="${_missing} SAST_URL"
+  [ -n "${SAST_TOKEN:-}" ] || _missing="${_missing} SAST_TOKEN"
+  [ -n "${SAST_USERNAME:-}" ] || warn "未配 SAST_USERNAME: 项目经理/归属部门将回退默认值, 推荐配置令牌归属人用户名"
+fi
+if [ "${ENABLE_SCA:-1}" != "0" ]; then
+  [ -n "${SCA_URL:-}" ]        || _missing="${_missing} SCA_URL"
+  [ -n "${SCA_USER_TOKEN:-}" ] || _missing="${_missing} SCA_USER_TOKEN"
+fi
+if [ -n "$_missing" ]; then
+  echo "$LOG_PREFIX [错误] 以下必填变量未配置:${_missing}"
+  echo "$LOG_PREFIX [错误] 请到 云效流水线-变量与缓存 中配置(敏感项勾私密), 说明见 ci/yunxiao/云效Flow接入指南.md"
+  exit 2
+fi
+
 # ---------------- ③ 依赖自检 ----------------
 for c in curl jq zip git python3; do
   command -v "$c" >/dev/null 2>&1 || warn "执行机缺少 [$c]，部分能力(报告解包/缺陷导出)将降级"

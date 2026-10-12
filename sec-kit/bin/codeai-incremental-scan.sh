@@ -122,12 +122,49 @@ for cmd in curl jq zip git; do
   command -v "$cmd" >/dev/null 2>&1 || die "缺少命令 [$cmd]，请先安装: yum install -y curl jq zip 或 apt-get install -y curl jq zip"
 done
 
-sast_curl() { curl -s $TLS_FLAGS --max-time 120 "$@"; }
+# 网络重试封装: 关键接口遇 超时/5xx/连接失败 自动重试(平台/链路抖动很常见, 不重试会把抖动变成流水线红)
+sast_curl() {
+  local attempt resp rc
+  for attempt in 1 2 3; do
+    resp=$(curl -s $TLS_FLAGS --max-time 120 "$@"); rc=$?
+    if [ $rc -eq 0 ] && ! printf '%s' "$resp" | grep -qE '^[[:space:]]*$'; then
+      printf '%s' "$resp"; return 0
+    fi
+    [ $attempt -lt 3 ] && { warn "接口调用异常(rc=$rc${resp:+, $(printf '%.80s' "$resp")}), 5秒后重试($attempt/3)"; sleep 5; }
+  done
+  printf '%s' "$resp"; return $rc
+}
+# 令牌/权限错误统一翻译: 直接告诉用户去哪处理, 不留模糊报错
+sast_check_auth() {  # sast_check_auth <响应>
+  local code
+  code=$(printf '%s' "$1" | jq -r '.code // 0' 2>/dev/null)
+  case "$code" in
+    401) die "平台返回401: SAST_TOKEN 无效或已过期。请到 ${SAST_URL} 右上角头像→个人中心→访问令牌 重新生成, 并更新 CI Secrets/变量中的令牌" ;;
+    403) die "平台返回403: 当前令牌权限不足(需要项目管理/检测权限)。请联系平台管理员核对令牌归属账号的角色" ;;
+  esac
+}
 # TLS 证书校验开关: 1=跳过(默认，内网自签证书) 0=严格校验(平台已配受信证书时)
 TLS_INSECURE="${TLS_INSECURE:-1}"
 [ "$TLS_INSECURE" = "1" ] && TLS_FLAGS="-k" || TLS_FLAGS=""
 sast_jq()   { echo "$1" | jq -r "$2" 2>/dev/null; }
 urlencode() { printf '%s' "$1" | jq -sRr '@uri'; }
+
+# ---- 业务标识解析: SKU/业务线(命名体系 v3, 对应9/24会议 SKU分支分层决议) ----
+# 优先级: 显式变量(SKU_ID/BIZ_LINE) > 分支名模式(sku/<SKU> | sku-<SKU>) > 空
+derive_biz_identity() {
+  SKU_ID="${SKU_ID:-}"
+  BIZ_LINE="${BIZ_LINE:-}"
+  if [ -z "$SKU_ID" ]; then
+    case "${GIT_BRANCH:-}" in
+      sku/*) SKU_ID="${GIT_BRANCH#sku/}" ;;
+      sku-*) SKU_ID="${GIT_BRANCH#sku-}" ;;
+    esac
+  fi
+  SEC_META="sec=kit;repo=${REPO_NAME:-};branch=${GIT_BRANCH:-}"
+  [ -n "$BIZ_LINE" ] && SEC_META="${SEC_META};biz=${BIZ_LINE}"
+  [ -n "$SKU_ID" ]   && SEC_META="${SEC_META};sku=${SKU_ID}"
+  [ -n "$SKU_ID" ] && log "业务标识: SKU=${SKU_ID}${BIZ_LINE:+ 品线=${BIZ_LINE}}(写入项目描述,平台可检索)"
+}
 
 # 出网URL校验: 仅允许 http/https; 拒绝 localhost/环回/链路本地/元数据/保留地址。
 # 说明: 私网地址(RFC1918)为本产品受支持的内网部署形态, 放行并打日志提示。
@@ -226,7 +263,9 @@ SAFE_NAME=$(printf '%s' "$APP_NAME" | tr '/ ' '__')
 [ -z "$GIT_BRANCH" ] && GIT_BRANCH=$(git -C "$SCAN_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "N/A")
 [ -z "$GIT_COMMIT" ] && GIT_COMMIT=$(git -C "$SCAN_DIR" log -1 --format=%H 2>/dev/null || echo "N/A")
 last_commit="$GIT_COMMIT"
+REPO_NAME=$(printf '%s' "$APP_NAME" | sed 's/-[^-]*$//')
 log "应用=${APP_NAME} 分支=${GIT_BRANCH} 提交=${last_commit}"
+derive_biz_identity
 
 # ---- ② 打包源码（与平台侧 git diff 的相对路径保持一致） ----
 # 排除模式注意: Info-ZIP 的 -x 对归档内路径做整串 glob 匹配，裸目录名(如 -x .git)
@@ -234,6 +273,9 @@ log "应用=${APP_NAME} 分支=${GIT_BRANCH} 提交=${last_commit}"
 # 兼容 *.log 这类自带通配的项(多余模式为无害 no-op)，并覆盖 monorepo 嵌套目录。
 PKG_FILE="${SCAN_DIR}/${SAFE_NAME}.zip"
 rm -f "$PKG_FILE"
+# 磁盘预检: 工作区剩余空间不足1GB时提前警告(打包/上传都会因磁盘满产生难以理解的失败)
+_avail_kb=$(df -k "$SCAN_DIR" 2>/dev/null | awk 'NR==2{print $4}')
+[ -n "$_avail_kb" ] && [ "$_avail_kb" -lt 1048576 ] && warn "工作区剩余空间不足1GB(当前${_avail_kb}KB), 大仓库可能打包/落盘失败, 请清理后重试"
 _x_args=()
 for pat in $EXCLUDES; do _x_args+=(-x "$pat" -x "$pat/*" -x "*/$pat" -x "*/$pat/*"); done
 ( cd "$SCAN_DIR" && zip -rq "$PKG_FILE" . ${_x_args[@]+"${_x_args[@]}"} ) || die "源码打包失败"
@@ -313,8 +355,10 @@ if [ "${SAST_PROJECT_ID:-0}" = "0" ] && [ -n "${SAST_PROJECT_NAME:-}" ]; then
           if [ "$_pm_try" = "1" ]; then
             _pm_req=$(jq -n --arg n "${SAST_PROJECT_NAME}" \
               --argjson pm "${SAST_PROJECT_PM_ID}" --argjson dept "${SAST_PROJECT_DEPT_ID}" \
-              --argjson mids "[${_member_ids:-}]" \
-              '{projectName:$n,pmId:$pm,departmentId:$dept} + (if ($mids|length)>0 then {userIds:$mids} else {} end)')
+              --argjson mids "[${_member_ids:-}]" --arg meta "${SEC_META:-}" \
+              '{projectName:$n,pmId:$pm,departmentId:$dept}
+                 + (if ($mids|length)>0 then {userIds:$mids} else {} end)
+                 + (if ($meta|length)>0 then {description:$meta} else {} end)')
           else
             log "带成员创建被拒 → 降级为不带成员创建(成员稍后在平台 UI 添加)..."
             _pm_req=$(jq -n --arg n "${SAST_PROJECT_NAME}" --argjson pm "${SAST_PROJECT_PM_ID}" --argjson dept "${SAST_PROJECT_DEPT_ID}" \
@@ -368,7 +412,10 @@ if [ -z "$app_id" ] || [ "$app_id" = "null" ]; then
 else
   log "复用已有应用 appId=${app_id}"
 fi
-[ -z "$app_id" ] || [ "$app_id" = "null" ] && die "appId 解析失败(请检查 Sast-Token 与平台连通性)"
+if [ -z "$app_id" ] || [ "$app_id" = "null" ]; then
+  sast_check_auth "${list_resp:-}"
+  die "appId 解析失败: 请检查 ①SAST_TOKEN 是否有效(个人中心→访问令牌) ②${SAST_URL} 从本执行机是否可达 ③平台版本是否支持该接口"
+fi
 
 # ---- ④ 计算增量范围：平台侧上次扫描 hash ↔ 本次提交 的变更文件清单 ----
 increment=0
@@ -699,6 +746,8 @@ fi
 RAW_RESULT_JSON=$(jq -n \
   --arg app "$APP_NAME" --arg taskid "$taskId" --arg appid "$poll_app" \
   --arg title "$SCAN_TITLE" --arg gate "$GATE_RESULT" --arg url "$SAST_URL" \
+  --arg detailurl "${SAST_URL}/detection/code/${poll_app}/${taskId}/details/result" \
+  --arg increment "${increment}" \
   --arg branch "$GIT_BRANCH" --arg author "$GIT_AUTHOR" --arg commit "$GIT_COMMIT" \
   --arg build "$BUILD_URL" --arg time "$(date '+%Y-%m-%d %H:%M:%S')" \
   --arg scanmode "$SCAN_TYPE_DESC" \
@@ -710,9 +759,12 @@ RAW_RESULT_JSON=$(jq -n \
   --arg defectshtml "${DEFECTS_HTML_FILE:-}" \
   --argjson sup "${SUPER_COUNT:-0}" --argjson high "${HIGH_COUNT:-0}" \
   --argjson mid "${MIDDLE_COUNT:-0}" --argjson low "${LOW_COUNT:-0}" \
+  --arg sku "${SKU_ID:-}" --arg biz "${BIZ_LINE:-}" \
   '{scanTitle:$title, appName:$app, branch:$branch, author:$author, commit:$commit,
     platformUrl:$url, appId:$appid, taskId:$taskid, scanTime:$time, scanMode:$scanmode,
-    reportUrl:$reporturl, projectName:$project,
+    reportUrl:$reporturl, detailUrl:$detailurl, incremental:($increment=="1"),
+    sku:(if $sku!="" then $sku else null end), biz:(if $biz!="" then $biz else null end),
+    projectName:$project,
     reportKind:$reportkind, reportFile:$reportfile,
     defectsFile:$defectsfile, defectsHtml:$defectshtml,
     defectCount:{super:$sup, high:$high, middle:$mid, low:$low},

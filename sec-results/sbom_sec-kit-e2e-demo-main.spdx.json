@@ -3,17 +3,17 @@
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-",
   "name": "xm-spdx-sbom",
-  "documentNamespace": "http://xmsca-sca/876034af-25eb-4c9e-bd71-784b88a64f99",
+  "documentNamespace": "http://xmsca-sca/a03980dd-9611-478d-8516-afaff6bcc3aa",
   "creationInfo": {
     "creators": [
       "Tool: xmsca"
     ],
-    "created": "2026-10-12T06:26:19Z"
+    "created": "2026-10-12T06:59:16Z"
   },
   "packages": [
     {
       "name": "e2e-demo-app",
-      "SPDXID": "SPDXRef-4a03d01702de484aaaee7f9b3f04ffe9",
+      "SPDXID": "SPDXRef-89d926a9ea684dc8979d229083896687",
       "versionInfo": "1.0.0",
       "downloadLocation": "NONE",
       "filesAnalyzed": false,
@@ -27,8 +27,8 @@
       ],
       "files": [
         {
-          "fileName": "package.json",
-          "SPDXID": "SPDXRef-4a03d01702de484aaaee7f9b3f04ffe9-file",
+          "fileName": "gh-sca/sbom_sec-kit-e2e-demo-main.spdx.json",
+          "SPDXID": "SPDXRef-89d926a9ea684dc8979d229083896687-file",
           "checksums": [],
           "copyrightText": "NONE"
         }
@@ -36,15 +36,122 @@
       "annotations": [
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "EOL: false"
         }
       ]
     },
     {
+      "name": "fastjson",
+      "SPDXID": "SPDXRef-4638bf1b31234533965bd1a5d064a6ae",
+      "versionInfo": "1.2.24",
+      "originator": "Organization: com.alibaba",
+      "downloadLocation": "https://repo1.maven.org/maven2/com/alibaba/fastjson/1.2.24/",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "comment": "LatestVersion:2.0.65 (Released:2026-09-02T14:05:12)",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:maven/com.alibaba/fastjson@1.2.24"
+        },
+        {
+          "referenceCategory": "SECURITY",
+          "referenceType": "cve",
+          "referenceLocator": "(H)CVE-2022-25845"
+        },
+        {
+          "referenceCategory": "SECURITY",
+          "referenceType": "cve",
+          "referenceLocator": "(H)XMIRROR-E5B714FC-316B10A2"
+        },
+        {
+          "referenceCategory": "SECURITY",
+          "referenceType": "cve",
+          "referenceLocator": "(H)XMIRROR-E5B7140E-B05F5DA2"
+        },
+        {
+          "referenceCategory": "SECURITY",
+          "referenceType": "cve",
+          "referenceLocator": "(H)CVE-2025-70974"
+        },
+        {
+          "referenceCategory": "SECURITY",
+          "referenceType": "cve",
+          "referenceLocator": "(H)XMIRROR-E5B714A6-79D24E32"
+        },
+        {
+          "referenceCategory": "SECURITY",
+          "referenceType": "cve",
+          "referenceLocator": "(C)CVE-2017-18349"
+        },
+        {
+          "referenceCategory": "SECURITY",
+          "referenceType": "cve",
+          "referenceLocator": "(C)XMIRROR-E5F54709-6252F326"
+        },
+        {
+          "referenceCategory": "SECURITY",
+          "referenceType": "cve",
+          "referenceLocator": "(H)XMIRROR-E5B7669E-3A6F44A2"
+        },
+        {
+          "referenceCategory": "SECURITY",
+          "referenceType": "cve",
+          "referenceLocator": "(M)XMIRROR-E5F547C6-64E1AB1D"
+        },
+        {
+          "referenceCategory": "SECURITY",
+          "referenceType": "cve",
+          "referenceLocator": "(H)XMIRROR-E5B71403-AFD6C7A2"
+        },
+        {
+          "referenceCategory": "SECURITY",
+          "referenceType": "cve",
+          "referenceLocator": "(H)XMIRROR-E5B77528-81BEBB2B"
+        }
+      ],
+      "releaseDate": "2017-01-19T09:04:56",
+      "files": [
+        {
+          "fileName": "pom.xml",
+          "SPDXID": "SPDXRef-4638bf1b31234533965bd1a5d064a6ae-file",
+          "checksums": [],
+          "copyrightText": "NONE"
+        }
+      ],
+      "annotations": [
+        {
+          "annotator": "Tool: xmsca",
+          "annotationDate": "2026-10-12T06:59:16Z",
+          "annotationType": "",
+          "comment": "EOL: false"
+        },
+        {
+          "annotator": "Tool: xmsca",
+          "annotationDate": "2026-10-12T06:59:16Z",
+          "annotationType": "",
+          "comment": "Age: 3553Day"
+        },
+        {
+          "annotator": "Tool: xmsca",
+          "annotationDate": "2026-10-12T06:59:16Z",
+          "annotationType": "",
+          "comment": "Already Expired."
+        },
+        {
+          "annotator": "Tool: xmsca",
+          "annotationDate": "2026-10-12T06:59:16Z",
+          "annotationType": "",
+          "comment": "Expired Time: 2823Day"
+        }
+      ]
+    },
+    {
       "name": "pyyaml",
-      "SPDXID": "SPDXRef-1d22cabc2ab14a8ca11667dfa1a2e8b7",
+      "SPDXID": "SPDXRef-09790a613b474d07b9eb9c519af9e7e3",
       "versionInfo": "3.13",
       "downloadLocation": "https://pypi.org/project/pyyaml/3.13/#files",
       "filesAnalyzed": false,
@@ -74,8 +181,8 @@
       "releaseDate": "2018-07-05T22:53:15",
       "files": [
         {
-          "fileName": "requirements.txt",
-          "SPDXID": "SPDXRef-1d22cabc2ab14a8ca11667dfa1a2e8b7-file",
+          "fileName": "sec-results/sbom_sec-kit-e2e-demo-main.spdx.json",
+          "SPDXID": "SPDXRef-09790a613b474d07b9eb9c519af9e7e3-file",
           "checksums": [],
           "copyrightText": "NONE"
         }
@@ -83,140 +190,33 @@
       "annotations": [
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "EOL: false"
         },
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "Age: 3021Day"
         },
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "Already Expired."
         },
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "Expired Time: 2291Day"
         }
       ]
     },
     {
-      "name": "fastjson",
-      "SPDXID": "SPDXRef-0fba72c443b94523aabcfe5e6ba1ebea",
-      "versionInfo": "1.2.24",
-      "originator": "Organization: com.alibaba",
-      "downloadLocation": "https://repo1.maven.org/maven2/com/alibaba/fastjson/1.2.24/",
-      "filesAnalyzed": false,
-      "licenseConcluded": "Apache-2.0",
-      "comment": "LatestVersion:2.0.65 (Released:2026-09-02T14:05:12)",
-      "externalRefs": [
-        {
-          "referenceCategory": "PACKAGE-MANAGER",
-          "referenceType": "purl",
-          "referenceLocator": "pkg:maven/com.alibaba/fastjson@1.2.24"
-        },
-        {
-          "referenceCategory": "SECURITY",
-          "referenceType": "cve",
-          "referenceLocator": "(C)CVE-2017-18349"
-        },
-        {
-          "referenceCategory": "SECURITY",
-          "referenceType": "cve",
-          "referenceLocator": "(H)XMIRROR-E5B714A6-79D24E32"
-        },
-        {
-          "referenceCategory": "SECURITY",
-          "referenceType": "cve",
-          "referenceLocator": "(H)CVE-2022-25845"
-        },
-        {
-          "referenceCategory": "SECURITY",
-          "referenceType": "cve",
-          "referenceLocator": "(H)XMIRROR-E5B714FC-316B10A2"
-        },
-        {
-          "referenceCategory": "SECURITY",
-          "referenceType": "cve",
-          "referenceLocator": "(H)CVE-2025-70974"
-        },
-        {
-          "referenceCategory": "SECURITY",
-          "referenceType": "cve",
-          "referenceLocator": "(H)XMIRROR-E5B7140E-B05F5DA2"
-        },
-        {
-          "referenceCategory": "SECURITY",
-          "referenceType": "cve",
-          "referenceLocator": "(C)XMIRROR-E5F54709-6252F326"
-        },
-        {
-          "referenceCategory": "SECURITY",
-          "referenceType": "cve",
-          "referenceLocator": "(M)XMIRROR-E5F547C6-64E1AB1D"
-        },
-        {
-          "referenceCategory": "SECURITY",
-          "referenceType": "cve",
-          "referenceLocator": "(H)XMIRROR-E5B7669E-3A6F44A2"
-        },
-        {
-          "referenceCategory": "SECURITY",
-          "referenceType": "cve",
-          "referenceLocator": "(H)XMIRROR-E5B71403-AFD6C7A2"
-        },
-        {
-          "referenceCategory": "SECURITY",
-          "referenceType": "cve",
-          "referenceLocator": "(H)XMIRROR-E5B77528-81BEBB2B"
-        }
-      ],
-      "releaseDate": "2017-01-19T09:04:56",
-      "files": [
-        {
-          "fileName": "pom.xml",
-          "SPDXID": "SPDXRef-0fba72c443b94523aabcfe5e6ba1ebea-file",
-          "checksums": [],
-          "copyrightText": "NONE"
-        }
-      ],
-      "annotations": [
-        {
-          "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
-          "annotationType": "",
-          "comment": "EOL: false"
-        },
-        {
-          "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
-          "annotationType": "",
-          "comment": "Age: 3553Day"
-        },
-        {
-          "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
-          "annotationType": "",
-          "comment": "Already Expired."
-        },
-        {
-          "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
-          "annotationType": "",
-          "comment": "Expired Time: 2823Day"
-        }
-      ]
-    },
-    {
       "name": "log4j-api",
-      "SPDXID": "SPDXRef-1f7ed5b33cf6411db158020e5a90af08",
+      "SPDXID": "SPDXRef-18778b719f2c4b48a7d8927a6b94ea0f",
       "versionInfo": "2.14.1",
       "originator": "Organization: org.apache.logging.log4j",
       "downloadLocation": "https://repo1.maven.org/maven2/org/apache/logging/log4j/log4j-api/2.14.1/",
@@ -238,8 +238,8 @@
       "releaseDate": "2021-03-07T05:11:48",
       "files": [
         {
-          "fileName": "sec-results/sbom_sec-kit-e2e-demo-main.spdx.json",
-          "SPDXID": "SPDXRef-1f7ed5b33cf6411db158020e5a90af08-file",
+          "fileName": "pom.xml",
+          "SPDXID": "SPDXRef-18778b719f2c4b48a7d8927a6b94ea0f-file",
           "checksums": [],
           "copyrightText": "NONE"
         }
@@ -247,25 +247,25 @@
       "annotations": [
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "EOL: false"
         },
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "Age: 2045Day"
         },
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "Already Expired."
         },
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "Expired Time: 1315Day"
         }
@@ -273,7 +273,7 @@
     },
     {
       "name": "chardet",
-      "SPDXID": "SPDXRef-275cee8e98e54757b13a798b663b3c8b",
+      "SPDXID": "SPDXRef-0c864b28ad37413f8e465e98e5c3bf2e",
       "versionInfo": "3.0.4",
       "downloadLocation": "https://pypi.org/project/chardet/3.0.4/#files",
       "filesAnalyzed": false,
@@ -290,7 +290,7 @@
       "files": [
         {
           "fileName": "sec-results/sbom_sec-kit-e2e-demo-main.spdx.json",
-          "SPDXID": "SPDXRef-275cee8e98e54757b13a798b663b3c8b-file",
+          "SPDXID": "SPDXRef-0c864b28ad37413f8e465e98e5c3bf2e-file",
           "checksums": [],
           "copyrightText": "NONE"
         }
@@ -298,25 +298,25 @@
       "annotations": [
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "EOL: false"
         },
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "Age: 3413Day"
         },
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "Already Expired."
         },
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "Expired Time: 2683Day"
         }
@@ -324,7 +324,7 @@
     },
     {
       "name": "e2e-demo-app",
-      "SPDXID": "SPDXRef-166fe5f84c934aeb8ee4c87a6089f78c",
+      "SPDXID": "SPDXRef-8a612ba82c78452397993793b666a648",
       "versionInfo": "1.0.0",
       "originator": "Organization: com.govee.demo",
       "downloadLocation": "NONE",
@@ -339,8 +339,8 @@
       ],
       "files": [
         {
-          "fileName": "gh-sca/sbom_sec-kit-e2e-demo-main.spdx.json",
-          "SPDXID": "SPDXRef-166fe5f84c934aeb8ee4c87a6089f78c-file",
+          "fileName": "pom.xml",
+          "SPDXID": "SPDXRef-8a612ba82c78452397993793b666a648-file",
           "checksums": [],
           "copyrightText": "NONE"
         }
@@ -348,7 +348,7 @@
       "annotations": [
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "EOL: false"
         }
@@ -356,7 +356,7 @@
     },
     {
       "name": "requests",
-      "SPDXID": "SPDXRef-0d0f0282e03443c98dd9d583f6be3c1e",
+      "SPDXID": "SPDXRef-18a90563897d455abd8cab708b2cf36e",
       "versionInfo": "2.19.1",
       "downloadLocation": "https://pypi.org/project/requests/2.19.1/#files",
       "filesAnalyzed": false,
@@ -371,7 +371,7 @@
         {
           "referenceCategory": "SECURITY",
           "referenceType": "cve",
-          "referenceLocator": "(C)XMIRROR-E5F5415F-F526B21D"
+          "referenceLocator": "(H)CVE-2018-18074"
         },
         {
           "referenceCategory": "SECURITY",
@@ -381,12 +381,12 @@
         {
           "referenceCategory": "SECURITY",
           "referenceType": "cve",
-          "referenceLocator": "(H)XMIRROR-E5F5415F-6B273D1D"
+          "referenceLocator": "(C)XMIRROR-E5F5415F-F526B21D"
         },
         {
           "referenceCategory": "SECURITY",
           "referenceType": "cve",
-          "referenceLocator": "(H)CVE-2018-18074"
+          "referenceLocator": "(H)XMIRROR-E5F5415F-6B273D1D"
         },
         {
           "referenceCategory": "SECURITY",
@@ -407,8 +407,8 @@
       "releaseDate": "2018-06-14T13:40:38",
       "files": [
         {
-          "fileName": "gh-sca/sbom_sec-kit-e2e-demo-main.spdx.json",
-          "SPDXID": "SPDXRef-0d0f0282e03443c98dd9d583f6be3c1e-file",
+          "fileName": "requirements.txt",
+          "SPDXID": "SPDXRef-18a90563897d455abd8cab708b2cf36e-file",
           "checksums": [],
           "copyrightText": "NONE"
         }
@@ -416,25 +416,25 @@
       "annotations": [
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "EOL: false"
         },
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "Age: 3042Day"
         },
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "Already Expired."
         },
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "Expired Time: 2312Day"
         }
@@ -442,7 +442,7 @@
     },
     {
       "name": "node-serialize",
-      "SPDXID": "SPDXRef-10fd70aa45ae436097367345fe892d32",
+      "SPDXID": "SPDXRef-4d9700f62c284a5582c6adeb59987429",
       "versionInfo": "0.0.4",
       "downloadLocation": "https://registry.npmjs.org/node-serialize/-/node-serialize-0.0.4.tgz",
       "filesAnalyzed": false,
@@ -463,7 +463,7 @@
       "files": [
         {
           "fileName": "package.json",
-          "SPDXID": "SPDXRef-10fd70aa45ae436097367345fe892d32-file",
+          "SPDXID": "SPDXRef-4d9700f62c284a5582c6adeb59987429-file",
           "checksums": [],
           "copyrightText": "NONE"
         }
@@ -471,25 +471,25 @@
       "annotations": [
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "EOL: false"
         },
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "Age: 4522Day"
         },
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "Already Expired."
         },
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "Expired Time: 3792Day"
         }
@@ -497,7 +497,7 @@
     },
     {
       "name": "idna",
-      "SPDXID": "SPDXRef-54923c43471c4f3d98448a0f05a4f0c0",
+      "SPDXID": "SPDXRef-8faaae94199142888f00a165a8ed6919",
       "versionInfo": "2.7",
       "downloadLocation": "https://pypi.org/project/idna/2.7/#files",
       "filesAnalyzed": false,
@@ -512,19 +512,19 @@
         {
           "referenceCategory": "SECURITY",
           "referenceType": "cve",
-          "referenceLocator": "(M)CVE-2026-45409"
+          "referenceLocator": "(M)CVE-2024-3651"
         },
         {
           "referenceCategory": "SECURITY",
           "referenceType": "cve",
-          "referenceLocator": "(M)CVE-2024-3651"
+          "referenceLocator": "(M)CVE-2026-45409"
         }
       ],
       "releaseDate": "2018-06-11T02:52:19",
       "files": [
         {
           "fileName": "gh-sca/sbom_sec-kit-e2e-demo-main.spdx.json",
-          "SPDXID": "SPDXRef-54923c43471c4f3d98448a0f05a4f0c0-file",
+          "SPDXID": "SPDXRef-8faaae94199142888f00a165a8ed6919-file",
           "checksums": [],
           "copyrightText": "NONE"
         }
@@ -532,25 +532,25 @@
       "annotations": [
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "EOL: false"
         },
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "Age: 3045Day"
         },
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "Already Expired."
         },
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "Expired Time: 2315Day"
         }
@@ -558,7 +558,7 @@
     },
     {
       "name": "flask",
-      "SPDXID": "SPDXRef-5f81b1b2fa274d0eaf791910eb48b54a",
+      "SPDXID": "SPDXRef-78a9c2696f214c8983623cad0e7cd205",
       "versionInfo": "0.12.2",
       "downloadLocation": "https://pypi.org/project/flask/0.12.2/#files",
       "filesAnalyzed": false,
@@ -594,8 +594,8 @@
       "releaseDate": "2017-05-16T06:39:38",
       "files": [
         {
-          "fileName": "sec-results/sbom_sec-kit-e2e-demo-main.spdx.json",
-          "SPDXID": "SPDXRef-5f81b1b2fa274d0eaf791910eb48b54a-file",
+          "fileName": "requirements.txt",
+          "SPDXID": "SPDXRef-78a9c2696f214c8983623cad0e7cd205-file",
           "checksums": [],
           "copyrightText": "NONE"
         }
@@ -603,118 +603,33 @@
       "annotations": [
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "EOL: false"
         },
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "Age: 3436Day"
         },
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "Already Expired."
         },
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "Expired Time: 2706Day"
         }
       ]
     },
     {
-      "name": "lodash",
-      "SPDXID": "SPDXRef-28567fde5d254cc192b92d68edf41484",
-      "versionInfo": "4.17.15",
-      "downloadLocation": "https://registry.npmjs.org/lodash/-/lodash-4.17.15.tgz",
-      "filesAnalyzed": false,
-      "licenseConcluded": "MIT",
-      "externalRefs": [
-        {
-          "referenceCategory": "PACKAGE-MANAGER",
-          "referenceType": "purl",
-          "referenceLocator": "pkg:npm/lodash@4.17.15"
-        },
-        {
-          "referenceCategory": "SECURITY",
-          "referenceType": "cve",
-          "referenceLocator": "(M)CVE-2025-13465"
-        },
-        {
-          "referenceCategory": "SECURITY",
-          "referenceType": "cve",
-          "referenceLocator": "(M)CVE-2026-2950"
-        },
-        {
-          "referenceCategory": "SECURITY",
-          "referenceType": "cve",
-          "referenceLocator": "(H)CVE-2020-8203"
-        },
-        {
-          "referenceCategory": "SECURITY",
-          "referenceType": "cve",
-          "referenceLocator": "(H)CVE-2021-23337"
-        },
-        {
-          "referenceCategory": "SECURITY",
-          "referenceType": "cve",
-          "referenceLocator": "(H)XMIRROR-E5B77528-265C072B"
-        },
-        {
-          "referenceCategory": "SECURITY",
-          "referenceType": "cve",
-          "referenceLocator": "(H)CVE-2026-4800"
-        },
-        {
-          "referenceCategory": "SECURITY",
-          "referenceType": "cve",
-          "referenceLocator": "(M)CVE-2020-28500"
-        }
-      ],
-      "releaseDate": "2019-07-19T02:28:46",
-      "files": [
-        {
-          "fileName": "package.json",
-          "SPDXID": "SPDXRef-28567fde5d254cc192b92d68edf41484-file",
-          "checksums": [],
-          "copyrightText": "NONE"
-        }
-      ],
-      "annotations": [
-        {
-          "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
-          "annotationType": "",
-          "comment": "EOL: false"
-        },
-        {
-          "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
-          "annotationType": "",
-          "comment": "Age: 2642Day"
-        },
-        {
-          "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
-          "annotationType": "",
-          "comment": "Already Expired."
-        },
-        {
-          "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
-          "annotationType": "",
-          "comment": "Expired Time: 1912Day"
-        }
-      ]
-    },
-    {
       "name": "log4j-core",
-      "SPDXID": "SPDXRef-257d041207e849f0b2b374110ba4d0a9",
+      "SPDXID": "SPDXRef-828d248777414a7ab66e5e831d642028",
       "versionInfo": "2.14.1",
       "originator": "Organization: org.apache.logging.log4j",
       "downloadLocation": "https://repo1.maven.org/maven2/org/apache/logging/log4j/log4j-core/2.14.1/",
@@ -730,22 +645,22 @@
         {
           "referenceCategory": "SECURITY",
           "referenceType": "cve",
-          "referenceLocator": "(M)CVE-2021-44832"
-        },
-        {
-          "referenceCategory": "SECURITY",
-          "referenceType": "cve",
-          "referenceLocator": "(M)CVE-2026-34477"
-        },
-        {
-          "referenceCategory": "SECURITY",
-          "referenceType": "cve",
           "referenceLocator": "(M)CVE-2026-34480"
         },
         {
           "referenceCategory": "SECURITY",
           "referenceType": "cve",
           "referenceLocator": "(M)CVE-2026-34479"
+        },
+        {
+          "referenceCategory": "SECURITY",
+          "referenceType": "cve",
+          "referenceLocator": "(M)CVE-2021-44832"
+        },
+        {
+          "referenceCategory": "SECURITY",
+          "referenceType": "cve",
+          "referenceLocator": "(M)CVE-2026-34477"
         },
         {
           "referenceCategory": "SECURITY",
@@ -771,8 +686,8 @@
       "releaseDate": "2021-03-07T05:12:31",
       "files": [
         {
-          "fileName": "gh-sca/sbom_sec-kit-e2e-demo-main.spdx.json",
-          "SPDXID": "SPDXRef-257d041207e849f0b2b374110ba4d0a9-file",
+          "fileName": "pom.xml",
+          "SPDXID": "SPDXRef-828d248777414a7ab66e5e831d642028-file",
           "checksums": [],
           "copyrightText": "NONE"
         }
@@ -780,33 +695,118 @@
       "annotations": [
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "EOL: false"
         },
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "Age: 2045Day"
         },
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "Already Expired."
         },
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "Expired Time: 1315Day"
         }
       ]
     },
     {
+      "name": "lodash",
+      "SPDXID": "SPDXRef-019937faab9b416c9220cbf93a4857b1",
+      "versionInfo": "4.17.15",
+      "downloadLocation": "https://registry.npmjs.org/lodash/-/lodash-4.17.15.tgz",
+      "filesAnalyzed": false,
+      "licenseConcluded": "MIT",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:npm/lodash@4.17.15"
+        },
+        {
+          "referenceCategory": "SECURITY",
+          "referenceType": "cve",
+          "referenceLocator": "(H)CVE-2021-23337"
+        },
+        {
+          "referenceCategory": "SECURITY",
+          "referenceType": "cve",
+          "referenceLocator": "(H)CVE-2020-8203"
+        },
+        {
+          "referenceCategory": "SECURITY",
+          "referenceType": "cve",
+          "referenceLocator": "(M)CVE-2025-13465"
+        },
+        {
+          "referenceCategory": "SECURITY",
+          "referenceType": "cve",
+          "referenceLocator": "(M)CVE-2026-2950"
+        },
+        {
+          "referenceCategory": "SECURITY",
+          "referenceType": "cve",
+          "referenceLocator": "(H)XMIRROR-E5B77528-265C072B"
+        },
+        {
+          "referenceCategory": "SECURITY",
+          "referenceType": "cve",
+          "referenceLocator": "(H)CVE-2026-4800"
+        },
+        {
+          "referenceCategory": "SECURITY",
+          "referenceType": "cve",
+          "referenceLocator": "(M)CVE-2020-28500"
+        }
+      ],
+      "releaseDate": "2019-07-19T02:28:46",
+      "files": [
+        {
+          "fileName": "sec-results/sbom_sec-kit-e2e-demo-main.spdx.json",
+          "SPDXID": "SPDXRef-019937faab9b416c9220cbf93a4857b1-file",
+          "checksums": [],
+          "copyrightText": "NONE"
+        }
+      ],
+      "annotations": [
+        {
+          "annotator": "Tool: xmsca",
+          "annotationDate": "2026-10-12T06:59:16Z",
+          "annotationType": "",
+          "comment": "EOL: false"
+        },
+        {
+          "annotator": "Tool: xmsca",
+          "annotationDate": "2026-10-12T06:59:16Z",
+          "annotationType": "",
+          "comment": "Age: 2642Day"
+        },
+        {
+          "annotator": "Tool: xmsca",
+          "annotationDate": "2026-10-12T06:59:16Z",
+          "annotationType": "",
+          "comment": "Already Expired."
+        },
+        {
+          "annotator": "Tool: xmsca",
+          "annotationDate": "2026-10-12T06:59:16Z",
+          "annotationType": "",
+          "comment": "Expired Time: 1912Day"
+        }
+      ]
+    },
+    {
       "name": "commons-collections4",
-      "SPDXID": "SPDXRef-18ce400442c24cdeaf7051f0e375a2f9",
+      "SPDXID": "SPDXRef-434561b85c074b1195e2fd023196d37b",
       "versionInfo": "4.0",
       "originator": "Organization: org.apache.commons",
       "downloadLocation": "https://repo1.maven.org/maven2/org/apache/commons/commons-collections4/4.0/",
@@ -822,19 +822,19 @@
         {
           "referenceCategory": "SECURITY",
           "referenceType": "cve",
-          "referenceLocator": "(C)CVE-2015-6420"
+          "referenceLocator": "(C)CVE-2015-7501"
         },
         {
           "referenceCategory": "SECURITY",
           "referenceType": "cve",
-          "referenceLocator": "(C)CVE-2015-7501"
+          "referenceLocator": "(C)CVE-2015-6420"
         }
       ],
       "releaseDate": "2013-11-20T22:46:13",
       "files": [
         {
-          "fileName": "sec-results/sbom_sec-kit-e2e-demo-main.spdx.json",
-          "SPDXID": "SPDXRef-18ce400442c24cdeaf7051f0e375a2f9-file",
+          "fileName": "pom.xml",
+          "SPDXID": "SPDXRef-434561b85c074b1195e2fd023196d37b-file",
           "checksums": [],
           "copyrightText": "NONE"
         }
@@ -842,25 +842,25 @@
       "annotations": [
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "EOL: false"
         },
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "Age: 4709Day"
         },
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "Already Expired."
         },
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "Expired Time: 3979Day"
         }
@@ -868,7 +868,7 @@
     },
     {
       "name": "certifi",
-      "SPDXID": "SPDXRef-16d54e88310c4a36bdf592c6cab333b9",
+      "SPDXID": "SPDXRef-3c1cbf867edc48818cd4f77cd16219e5",
       "versionInfo": "2026.7.22",
       "downloadLocation": "https://pypi.org/project/certifi/2026.7.22/#files",
       "filesAnalyzed": false,
@@ -883,8 +883,8 @@
       "releaseDate": "2026-07-22T03:35:11",
       "files": [
         {
-          "fileName": "sec-results/sbom_sec-kit-e2e-demo-main.spdx.json",
-          "SPDXID": "SPDXRef-16d54e88310c4a36bdf592c6cab333b9-file",
+          "fileName": "gh-sca/sbom_sec-kit-e2e-demo-main.spdx.json",
+          "SPDXID": "SPDXRef-3c1cbf867edc48818cd4f77cd16219e5-file",
           "checksums": [],
           "copyrightText": "NONE"
         }
@@ -892,13 +892,13 @@
       "annotations": [
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "EOL: false"
         },
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "Age: 82Day"
         }
@@ -906,7 +906,7 @@
     },
     {
       "name": "urllib3",
-      "SPDXID": "SPDXRef-9e06c547efe94540980f903a3f456b7e",
+      "SPDXID": "SPDXRef-8b1520213fdb45eebe317ce60944cb74",
       "versionInfo": "1.23",
       "downloadLocation": "https://pypi.org/project/urllib3/1.23/#files",
       "filesAnalyzed": false,
@@ -917,21 +917,6 @@
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
           "referenceLocator": "pkg:pip/urllib3@1.23"
-        },
-        {
-          "referenceCategory": "SECURITY",
-          "referenceType": "cve",
-          "referenceLocator": "(M)CVE-2018-25091"
-        },
-        {
-          "referenceCategory": "SECURITY",
-          "referenceType": "cve",
-          "referenceLocator": "(H)CVE-2026-21441"
-        },
-        {
-          "referenceCategory": "SECURITY",
-          "referenceType": "cve",
-          "referenceLocator": "(M)CVE-2019-11236"
         },
         {
           "referenceCategory": "SECURITY",
@@ -951,6 +936,26 @@
         {
           "referenceCategory": "SECURITY",
           "referenceType": "cve",
+          "referenceLocator": "(H)CVE-2026-21441"
+        },
+        {
+          "referenceCategory": "SECURITY",
+          "referenceType": "cve",
+          "referenceLocator": "(M)CVE-2019-11236"
+        },
+        {
+          "referenceCategory": "SECURITY",
+          "referenceType": "cve",
+          "referenceLocator": "(M)CVE-2018-25091"
+        },
+        {
+          "referenceCategory": "SECURITY",
+          "referenceType": "cve",
+          "referenceLocator": "(M)CVE-2024-37891"
+        },
+        {
+          "referenceCategory": "SECURITY",
+          "referenceType": "cve",
           "referenceLocator": "(M)CVE-2025-50181"
         },
         {
@@ -961,12 +966,7 @@
         {
           "referenceCategory": "SECURITY",
           "referenceType": "cve",
-          "referenceLocator": "(M)CVE-2024-37891"
-        },
-        {
-          "referenceCategory": "SECURITY",
-          "referenceType": "cve",
-          "referenceLocator": "(H)CVE-2026-44431"
+          "referenceLocator": "(H)CVE-2025-66471"
         },
         {
           "referenceCategory": "SECURITY",
@@ -976,14 +976,14 @@
         {
           "referenceCategory": "SECURITY",
           "referenceType": "cve",
-          "referenceLocator": "(H)CVE-2025-66471"
+          "referenceLocator": "(H)CVE-2026-44431"
         }
       ],
       "releaseDate": "2018-06-05T03:25:49",
       "files": [
         {
-          "fileName": "sec-results/sbom_sec-kit-e2e-demo-main.spdx.json",
-          "SPDXID": "SPDXRef-9e06c547efe94540980f903a3f456b7e-file",
+          "fileName": "gh-sca/sbom_sec-kit-e2e-demo-main.spdx.json",
+          "SPDXID": "SPDXRef-8b1520213fdb45eebe317ce60944cb74-file",
           "checksums": [],
           "copyrightText": "NONE"
         }
@@ -991,25 +991,25 @@
       "annotations": [
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "EOL: false"
         },
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "Age: 3051Day"
         },
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "Already Expired."
         },
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "Expired Time: 2321Day"
         }
@@ -1017,7 +1017,7 @@
     },
     {
       "name": "moment",
-      "SPDXID": "SPDXRef-39c28088b32b4db182b0c06adff42f43",
+      "SPDXID": "SPDXRef-19dca961aa3141fba89dff32eb772d17",
       "versionInfo": "2.24.0",
       "downloadLocation": "https://registry.npmjs.org/moment/-/moment-2.24.0.tgz",
       "filesAnalyzed": false,
@@ -1042,8 +1042,8 @@
       "releaseDate": "2019-01-21T21:10:34",
       "files": [
         {
-          "fileName": "gh-sca/sbom_sec-kit-e2e-demo-main.spdx.json",
-          "SPDXID": "SPDXRef-39c28088b32b4db182b0c06adff42f43-file",
+          "fileName": "package.json",
+          "SPDXID": "SPDXRef-19dca961aa3141fba89dff32eb772d17-file",
           "checksums": [],
           "copyrightText": "NONE"
         }
@@ -1051,25 +1051,25 @@
       "annotations": [
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "EOL: false"
         },
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "Age: 2821Day"
         },
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "Already Expired."
         },
         {
           "annotator": "Tool: xmsca",
-          "annotationDate": "2026-10-12T06:26:19Z",
+          "annotationDate": "2026-10-12T06:59:16Z",
           "annotationType": "",
           "comment": "Expired Time: 2091Day"
         }
@@ -1079,82 +1079,82 @@
   "relationships": [
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
-      "relatedSpdxElement": "SPDXRef-4a03d01702de484aaaee7f9b3f04ffe9",
+      "relatedSpdxElement": "SPDXRef-89d926a9ea684dc8979d229083896687",
       "relationshipType": "DESCRIBES"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
-      "relatedSpdxElement": "SPDXRef-1d22cabc2ab14a8ca11667dfa1a2e8b7",
+      "relatedSpdxElement": "SPDXRef-09790a613b474d07b9eb9c519af9e7e3",
       "relationshipType": "DESCRIBES"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
-      "relatedSpdxElement": "SPDXRef-0fba72c443b94523aabcfe5e6ba1ebea",
+      "relatedSpdxElement": "SPDXRef-0c864b28ad37413f8e465e98e5c3bf2e",
       "relationshipType": "DESCRIBES"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
-      "relatedSpdxElement": "SPDXRef-1f7ed5b33cf6411db158020e5a90af08",
+      "relatedSpdxElement": "SPDXRef-8a612ba82c78452397993793b666a648",
       "relationshipType": "DESCRIBES"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
-      "relatedSpdxElement": "SPDXRef-275cee8e98e54757b13a798b663b3c8b",
+      "relatedSpdxElement": "SPDXRef-18a90563897d455abd8cab708b2cf36e",
       "relationshipType": "DESCRIBES"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
-      "relatedSpdxElement": "SPDXRef-166fe5f84c934aeb8ee4c87a6089f78c",
+      "relatedSpdxElement": "SPDXRef-4d9700f62c284a5582c6adeb59987429",
       "relationshipType": "DESCRIBES"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
-      "relatedSpdxElement": "SPDXRef-0d0f0282e03443c98dd9d583f6be3c1e",
+      "relatedSpdxElement": "SPDXRef-8faaae94199142888f00a165a8ed6919",
       "relationshipType": "DESCRIBES"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
-      "relatedSpdxElement": "SPDXRef-54923c43471c4f3d98448a0f05a4f0c0",
+      "relatedSpdxElement": "SPDXRef-78a9c2696f214c8983623cad0e7cd205",
       "relationshipType": "DESCRIBES"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
-      "relatedSpdxElement": "SPDXRef-5f81b1b2fa274d0eaf791910eb48b54a",
+      "relatedSpdxElement": "SPDXRef-019937faab9b416c9220cbf93a4857b1",
       "relationshipType": "DESCRIBES"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
-      "relatedSpdxElement": "SPDXRef-257d041207e849f0b2b374110ba4d0a9",
+      "relatedSpdxElement": "SPDXRef-3c1cbf867edc48818cd4f77cd16219e5",
       "relationshipType": "DESCRIBES"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
-      "relatedSpdxElement": "SPDXRef-18ce400442c24cdeaf7051f0e375a2f9",
+      "relatedSpdxElement": "SPDXRef-8b1520213fdb45eebe317ce60944cb74",
       "relationshipType": "DESCRIBES"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
-      "relatedSpdxElement": "SPDXRef-16d54e88310c4a36bdf592c6cab333b9",
+      "relatedSpdxElement": "SPDXRef-19dca961aa3141fba89dff32eb772d17",
       "relationshipType": "DESCRIBES"
     },
     {
-      "spdxElementId": "SPDXRef-DOCUMENT",
-      "relatedSpdxElement": "SPDXRef-9e06c547efe94540980f903a3f456b7e",
-      "relationshipType": "DESCRIBES"
-    },
-    {
-      "spdxElementId": "SPDXRef-DOCUMENT",
-      "relatedSpdxElement": "SPDXRef-39c28088b32b4db182b0c06adff42f43",
-      "relationshipType": "DESCRIBES"
-    },
-    {
-      "spdxElementId": "SPDXRef-4a03d01702de484aaaee7f9b3f04ffe9",
-      "relatedSpdxElement": "SPDXRef-10fd70aa45ae436097367345fe892d32",
+      "spdxElementId": "SPDXRef-8a612ba82c78452397993793b666a648",
+      "relatedSpdxElement": "SPDXRef-4638bf1b31234533965bd1a5d064a6ae",
       "relationshipType": "DEPENDS_ON"
     },
     {
-      "spdxElementId": "SPDXRef-4a03d01702de484aaaee7f9b3f04ffe9",
-      "relatedSpdxElement": "SPDXRef-28567fde5d254cc192b92d68edf41484",
+      "spdxElementId": "SPDXRef-8a612ba82c78452397993793b666a648",
+      "relatedSpdxElement": "SPDXRef-828d248777414a7ab66e5e831d642028",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-8a612ba82c78452397993793b666a648",
+      "relatedSpdxElement": "SPDXRef-434561b85c074b1195e2fd023196d37b",
+      "relationshipType": "DEPENDS_ON"
+    },
+    {
+      "spdxElementId": "SPDXRef-828d248777414a7ab66e5e831d642028",
+      "relatedSpdxElement": "SPDXRef-18778b719f2c4b48a7d8927a6b94ea0f",
       "relationshipType": "DEPENDS_ON"
     }
   ]

@@ -82,6 +82,11 @@ json_esc()  { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
 md5_file()  { if command -v md5sum >/dev/null 2>&1; then md5sum -b "$1" | awk '{print $1}'; else md5 -q "$1"; fi; }
 
 SCA_URL="${SCA_URL:-}"
+case "$SCA_URL" in
+  *:30001*) : ;;
+  "") : ;;
+  *) [ -n "${SCA_URL:-}" ] && echo "$LOG_PREFIX [提示] SCA_URL 未带 :30001 端口——若平台为标准部署(:30001控制台/:30002 OpenAPI), 请确认地址正确" >&2 ;;
+esac
 ROOT_FMT=$(echo "$SCA_URL" | awk -F"/" '{ print $1"/"$2"/"$3 }')
 API_ROOT=$(echo "$ROOT_FMT" | sed 's/:30001/:30002/')   # OpenAPI服务在30002端口
 AUTH_USER="OpenApiUserToken: ${SCA_USER_TOKEN:-}"
@@ -150,6 +155,25 @@ sca_user_lookup() {  # sca_user_lookup <username> → 输出 "userId|departmentI
     '[.data.records[]? | select(.username==$u)] | if length>0 then (.[0] | "\(.userId)|\(.departmentId // 0)") else "" end' 2>/dev/null
 }
 
+# ---- 业务标识解析: SKU/业务线(命名体系 v3, 对应9/24会议 SKU分支分层决议) ----
+# 来源优先级: 显式变量(SKU_ID/BIZ_LINE) > 分支名模式(sku/<SKU> 或 sku-<SKU>) > 空
+# 解析结果写入: 项目描述 / 应用描述 / 结果JSON / 通知卡片 —— 平台可检索, 供VMS/ASOC反推关联
+derive_biz_identity() {
+  SKU_ID="${SKU_ID:-}"
+  BIZ_LINE="${BIZ_LINE:-}"
+  if [ -z "$SKU_ID" ]; then
+    case "${GIT_BRANCH_NAME:-}" in
+      sku/*) SKU_ID="${GIT_BRANCH_NAME#sku/}" ;;
+      sku-*) SKU_ID="${GIT_BRANCH_NAME#sku-}" ;;
+    esac
+  fi
+  SEC_META="sec=kit;repo=${REPO_IDENT:-$(basename "$PWD")};branch=${GIT_BRANCH_NAME:-}"
+  [ -n "$BIZ_LINE" ] && SEC_META="${SEC_META};biz=${BIZ_LINE}"
+  [ -n "$SKU_ID" ]   && SEC_META="${SEC_META};sku=${SKU_ID}"
+  [ -n "${CI_PLATFORM:-}" ] && SEC_META="${SEC_META};ci=${CI_PLATFORM}"
+  [ -n "$SKU_ID" ] && log "业务标识: SKU=${SKU_ID}${BIZ_LINE:+ 品线=${BIZ_LINE}}(已写入项目/应用描述,平台可检索)"
+}
+
 do_provision() {
   [ -n "${SCA_URL:-}" ]    || die "provision: 请设置 SCA_URL"
   [ -n "${SCA_USER_TOKEN:-}" ] || die "provision: 请设置 SCA_USER_TOKEN"
@@ -194,7 +218,7 @@ do_provision() {
     # v2 报文: managerList/memberList/departmentId; 解析不到归属人时降级为仅项目名(老行为)
     _created=0
     if [ "$HAVE_JQ" = "1" ] && { [ -n "$_owner_id" ] || [ -n "$_member_ids" ]; }; then
-      _create_body=$(jq -n --arg n "$SCA_PROJECT_NAME" --arg d "CI auto-provisioned (${GIT_BRANCH_NAME:-CI})" \
+      _create_body=$(jq -n --arg n "$SCA_PROJECT_NAME" --arg d "CI auto-provisioned;${SEC_META:-}" \
         --argjson mids "[${_member_ids:-}]" \
         --argjson oids "[${_owner_id:-}]" \
         --argjson dept "${_owner_dept:-0}" \
@@ -296,9 +320,25 @@ do_scan() {
     # 平台个别正则含 PCRE (?i)，POSIX ERE 不支持会告警——单模式静音跳过，不影响其余
     find . -type f 2>/dev/null | grep -E "$fp" >> "$FILELIST" 2>/dev/null || true
   done
-  [ -s "$FILELIST" ] || { log "未匹配到特征文件，无需上传，正常退出"; exit 0; }
+  if [ ! -s "$FILELIST" ]; then
+    log "未匹配到特征文件(${mode}模式), 跳过扫描"
+    # 落盘说明性结果: 让聚合通知/下游明确知道"SCA跑了但无该类检测对象", 而不是疑惑为何缺数据
+    if [ -n "${RESULT_JSON_FILE:-}" ]; then
+      mkdir -p "$(dirname "$RESULT_JSON_FILE")" 2>/dev/null || true
+      if [ "$HAVE_JQ" = "1" ]; then
+        jq -n --arg app "${APP_NAME:-}" --arg mode "$mode" --arg branch "${GIT_BRANCH:-${GIT_BRANCH_NAME}}" \
+          '{product:"sca", mode:$mode, appName:$app, branch:$branch, skipped:true,
+            note:"未匹配到" + $mode + "模式特征文件(依赖清单/制品产物), 如需扫描请确认仓库包含对应文件或调整 SCAN_PATTERNS",
+            scanTime:(now|todate)}' > "$RESULT_JSON_FILE" 2>/dev/null || true
+      fi
+    fi
+    exit 0
+  fi
   sort -u "$FILELIST" -o "$FILELIST"
-  PKG="$WORKDIR/$(echo "${APP_NAME}" | tr -c 'A-Za-z0-9._-' '_').tar.gz"
+  # 平台以 originName 作为应用名(实测2026-10-12): 统一用安全化的 APP_NAME, 不带扩展名
+  # 注意用 printf(不带换行): echo 的行尾\n 会被 tr -c 替换成尾随 _(曾致应用名 xxx-main_.tar.gz)
+  UPLOAD_ORIGIN="$(printf '%s' "${APP_NAME}" | tr -c 'A-Za-z0-9._-' '_')"
+  PKG="$WORKDIR/${UPLOAD_ORIGIN}.tar.gz"
   tar zcf "$PKG" -T "$FILELIST" --ignore-failed-read 2>/dev/null || tar zcf "$PKG" -T "$FILELIST"
   PKG_SIZE=$(stat -f%z "$PKG" 2>/dev/null || stat -c%s "$PKG")
   PKG_MD5=$(md5_file "$PKG")
@@ -310,10 +350,15 @@ do_scan() {
   asset_file_id=-1; idx=-1
   for slice in $(ls "$PKG".* 2>/dev/null); do
     idx=$((idx + 1))
-    resp=$(curl -s -k --max-time 300 -X POST -H "OpenApiUserToken: ${SCA_USER_TOKEN}" \
-      -F "originName=$(basename "$PKG")" -F "file=@${slice}" \
-      "${ROOT_FMT}/sca/api-v1/open-api-v1/file/upload/slice?sliceByteSize=${SPLIT_SIZE:-52428800}&sliceTotal=${slice_count}&fileSize=${PKG_SIZE}&globalMd5=${PKG_MD5}&sliceIndex=${idx}&sliceTotal=${slice_count}")
-    echo "$resp" | grep -q '"code":0' || bypass_fail "上传失败: $resp"
+    _up_ok=0
+    for _up_try in 1 2; do
+      resp=$(curl -s -k --max-time 300 -X POST -H "OpenApiUserToken: ${SCA_USER_TOKEN}" \
+        -F "originName=${UPLOAD_ORIGIN}" -F "file=@${slice}" \
+        "${ROOT_FMT}/sca/api-v1/open-api-v1/file/upload/slice?sliceByteSize=${SPLIT_SIZE:-52428800}&sliceTotal=${slice_count}&fileSize=${PKG_SIZE}&globalMd5=${PKG_MD5}&sliceIndex=${idx}&sliceTotal=${slice_count}")
+      if echo "$resp" | grep -q '"code":0'; then _up_ok=1; break; fi
+      [ $_up_try = 1 ] && { warn "分片${idx}上传失败, 5秒后重试: $(printf '%.80s' "$resp")"; sleep 5; }
+    done
+    [ "$_up_ok" = "1" ] || bypass_fail "分片${idx}上传失败(已重试): $resp"
     if [ "$HAVE_JQ" = "1" ]; then asset_file_id=$(echo "$resp" | jq -r '.data.uploaded.assetFileId // .data.assetFileId // .assetFileId' 2>/dev/null)
     else asset_file_id=$(field_num "$resp" assetFileId); fi
   done
@@ -323,7 +368,7 @@ do_scan() {
   log "提交检测任务 ..."
   resp=$(curl -s -k --max-time 60 -X POST -H "OpenApiProjectToken: ${SCA_PROJECT_TOKEN}" \
     -H "$AUTH_USER" \
-    "${ROOT_FMT}/sca/api-v1/open-api-v1/package/task/add2?clientType=${TASK_SOURCE:-9}&taskName=${APP_NAME}&dynamicDetect=${DYNAMIC_DETECT:-true}&similarity=${SIMILARITY:-false}&assetFileId=${asset_file_id}&effective=true&privateRepoIds=${PRIVATE_REPO_IDS:-}")
+    "${ROOT_FMT}/sca/api-v1/open-api-v1/package/task/add2?clientType=${TASK_SOURCE:-9}&taskName=${APP_NAME}&dynamicDetect=${DYNAMIC_DETECT:-true}&similarity=${SIMILARITY:-false}&assetFileId=${asset_file_id}&effective=true&privateRepoIds=${PRIVATE_REPO_IDS:-}&description=$(printf '%s' "${SEC_META:-}" | sed 's/ /%20/g; s/;/%3B/g; s/=/%3D/g')")
   echo "$resp" | grep -q '"code":0' || bypass_fail "任务提交失败: $resp"
   TASK_ID=$(echo "$resp" | grep -Eo '"taskId":[0-9]+' | grep -Eo '[0-9]+')
   SCA_APP_ID=$(echo "$resp" | grep -Eo '"targetId":[0-9]+' | grep -Eo '[0-9]+')
@@ -382,18 +427,18 @@ do_scan() {
   # ---- 任务统计(组件/漏洞计数, 供通知卡片与下游消费; 平台聚合滞后约30-60s, 就绪即断) ----
   STAT_JSON=""
   if command -v curl >/dev/null 2>&1; then
-    for _try in 1 2 3 4 5 6 7 8; do
+    for _try in $(seq 1 15); do
       _stat=$(curl -s -k --max-time 30 -H "OpenApiUserToken: ${SCA_USER_TOKEN}" \
         "${API_ROOT}/openapi/v1/task/${TASK_ID}" 2>/dev/null)
       if echo "$_stat" | grep -q '"code":0'; then
-        STAT_JSON=$(echo "$_stat" | jq -c '{componentNum, vulNum, vulSeriousNum, vulHighNum, vulMediumNum, vulLowNum, licenseNum} | with_entries(select(.value!=null))' 2>/dev/null)
+        STAT_JSON=$(echo "$_stat" | jq -c '{componentNum, componentSeriousNum, componentHighNum, componentMediumNum, componentLowNum, componentNormalNum, vulNum, vulSeriousNum, vulHighNum, vulMediumNum, vulLowNum, licenseNum, licenseHighNum, licenseMediumNum, licenseLowNum} | with_entries(select(.value!=null))' 2>/dev/null)
         # vulNum 到位即认为统计已聚合完成
         [ "$(echo "$STAT_JSON" | jq -r '.vulNum // empty' 2>/dev/null)" != "" ] && break
       fi
       sleep 10
     done
     if [ "$(echo "$STAT_JSON" | jq -r '.vulNum // empty' 2>/dev/null)" != "" ]; then
-      log "任务统计: 组件$(echo "$STAT_JSON"|jq -r '.componentNum') 漏洞$(echo "$STAT_JSON"|jq -r '.vulNum')(严重$(echo "$STAT_JSON"|jq -r '.vulSeriousNum // 0')/高$(echo "$STAT_JSON"|jq -r '.vulHighNum // 0')/中$(echo "$STAT_JSON"|jq -r '.vulMediumNum // 0')/低$(echo "$STAT_JSON"|jq -r '.vulLowNum // 0'))"
+      log "任务统计: 组件$(echo "$STAT_JSON"|jq -r '.componentNum')(🔴$(echo "$STAT_JSON"|jq -r '.componentSeriousNum // 0')/🟠$(echo "$STAT_JSON"|jq -r '.componentHighNum // 0')/🟡$(echo "$STAT_JSON"|jq -r '.componentMediumNum // 0')) 漏洞$(echo "$STAT_JSON"|jq -r '.vulNum')(严重$(echo "$STAT_JSON"|jq -r '.vulSeriousNum // 0')/高$(echo "$STAT_JSON"|jq -r '.vulHighNum // 0')/中$(echo "$STAT_JSON"|jq -r '.vulMediumNum // 0')/低$(echo "$STAT_JSON"|jq -r '.vulLowNum // 0')) 许可证$(echo "$STAT_JSON"|jq -r '.licenseNum // 0')(高风险$(echo "$STAT_JSON"|jq -r '.licenseHighNum // 0'))"
     else
       warn "任务统计未就绪(跳过统计字段, 不影响扫描结论)"
       STAT_JSON=""
@@ -718,6 +763,7 @@ ${SUMMARY_MD}
 # 【分发】子命令
 # ============================================================================
 derive_repo_identity
+derive_biz_identity
 CMD="${1:-all}"
 case "$CMD" in
   all)       do_all ;;
