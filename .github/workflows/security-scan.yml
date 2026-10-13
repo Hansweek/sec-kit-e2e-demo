@@ -43,7 +43,7 @@ jobs:
   # Job 1/3 · 灵脉CodeAI SAST（与 SCA 并行执行）
   # ==========================================================================
   sast:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted]
     timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
@@ -61,7 +61,7 @@ jobs:
       - name: 计算触发模式与应用名 + 解析仓库协作人
         env:
           _GATE_GLOBAL: ${{ vars.SECURITY_GATE }}
-          _COMP_CODEAI: ${{ vars.CODEAI_GATE_ENABLED }}
+          _COMP_SAST: ${{ vars.SAST_GATE_ENABLED }}
           GH_TOKEN: ${{ github.token }}                       # GITHUB_TOKEN: 尝试拉协作人(权限不足自动降级)
           GH_MEMBER_PAT: ${{ secrets.GH_MEMBER_TOKEN }}       # 可选: 只读PAT(协作人接口403时的兜底)
         run: |
@@ -83,7 +83,7 @@ jobs:
           # ---- 门禁开关解析(总开关+组件级覆盖) ----
           _gnorm() { case "${1:-}" in 1|true|True|TRUE|y|Y|yes) echo 1;; 0|false|False|FALSE|n|N|no) echo 0;; *) echo "";; esac; }
           _gres() { _c=$(_gnorm "$2"); if [ -n "$_c" ]; then echo "$_c"; else _g=$(_gnorm "$1"); [ -n "$_g" ] && echo "$_g" || echo 0; fi; }
-          echo "GATE_ENABLED=$(_gres "$_GATE_GLOBAL" "$_COMP_CODEAI")" >> "$GITHUB_ENV"
+          echo "GATE_ENABLED=$(_gres "$_GATE_GLOBAL" "$_COMP_SAST")" >> "$GITHUB_ENV"
           # ---- 仓库协作人列表 → 平台项目成员(自动纳管v2) ----
           # 优先 GITHUB_TOKEN；403 时用可选 GH_MEMBER_PAT；再不行用手工变量 PROJECT_MEMBERS
           members=""
@@ -113,22 +113,22 @@ jobs:
       - name: CodeAI SAST 扫描
         if: ${{ vars.ENABLE_SAST != '0' || vars.ENABLE_SAST == '' }}   # 注意: 未配置=执行(GitHub表达式''=='0'需显式排除)
         env:
-          SAST_URL: ${{ vars.CODEAI_URL }}
-          SAST_TOKEN: ${{ secrets.CODEAI_TOKEN }}
-          SAST_PROJECT_ID: ${{ vars.CODEAI_PROJECT_ID }}
-          SAST_PROJECT_NAME: ${{ vars.CODEAI_PROJECT_NAME || github.event.repository.name }}  # 未配置时项目名=仓库名(自动创建)
+          SAST_URL: ${{ vars.SAST_URL }}
+          SAST_TOKEN: ${{ secrets.SAST_TOKEN }}
+          SAST_PROJECT_ID: ${{ vars.SAST_PROJECT_ID }}
+          SAST_PROJECT_NAME: ${{ vars.SAST_PROJECT_NAME || github.event.repository.name }}  # 未配置时项目名=仓库名(自动创建)
           SAST_USERNAME: ${{ vars.SAST_USERNAME }}              # 令牌归属人平台用户名 → 自动设为项目经理+归属其部门
           SAST_PROJECT_MEMBERS: ${{ env.REPO_MEMBERS }}         # 仓库协作人 → 平台项目成员(创建项目时生效)
           FORCE_FULL: ${{ env.FORCE_FULL }}
           CI_COMMIT_TAG: ${{ env.CI_COMMIT_TAG }}
           APP_NAME: ${{ env.APP_NAME }}
           GATE_ENABLED: ${{ env.GATE_ENABLED }}
-          GATE_SUPER: ${{ vars.CODEAI_GATE_SUPER }}
-          GATE_HIGH: ${{ vars.CODEAI_GATE_HIGH }}
-          GATE_MIDDLE: ${{ vars.CODEAI_GATE_MIDDLE }}
-          GATE_LOW: ${{ vars.CODEAI_GATE_LOW }}
+          GATE_SUPER: ${{ vars.SAST_GATE_SUPER }}
+          GATE_HIGH: ${{ vars.SAST_GATE_HIGH }}
+          GATE_MIDDLE: ${{ vars.SAST_GATE_MIDDLE }}
+          GATE_LOW: ${{ vars.SAST_GATE_LOW }}
           BY_PASS: "1"
-          BY_PASS_TIMEOUT_MINUTES: ${{ vars.CODEAI_TIMEOUT_MINUTES }}
+          BY_PASS_TIMEOUT_MINUTES: ${{ vars.SAST_TIMEOUT_MINUTES }}
           TLS_INSECURE: ${{ vars.TLS_INSECURE || '0' }}
           SAST_REPORT_KIND: DEFECT                              # DEFECT=详情报告(每缺陷类型全量条目)
           EXPORT_DEFECTS: "1"                                   # 全缺陷+全跟踪路径 JSON/HTML 归档
@@ -156,7 +156,7 @@ jobs:
   # Job 2/3 · 源鉴SCA（与 SAST 并行执行）
   # ==========================================================================
   sca:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted]
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -268,7 +268,7 @@ jobs:
   report:
     needs: [sast, sca]
     if: ${{ always() && !cancelled() }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4

@@ -1,94 +1,84 @@
-# 云效 Flow 接入指南（阿里云效 · 自定义 Shell 步骤）
+# 云效 Flow 接入指南（悬镜安全扫描 · 单任务三步骤版）
 
-> 适用：代码库托管在**阿里云效 Codeup**、流水线使用**云效 Flow** 的部门（如 ERP）。
-> 能力与 GitHub 版完全一致：SAST 增量扫描 / SCA 依赖+制品扫描 / 项目自动纳管（项目经理=令牌归属人、
-> 归属部门、仓库成员）/ 详情报告+全跟踪路径 / SBOM(SPDX)+VEX 归档 / 钉钉聚合通知（支持加签）。
-> 核心：仓库根放 `sec-kit/`，流水线加一步 `bash sec-kit/ci/yunxiao/yunxiao-security-step.sh`。
+> **接入方式：代码仓库无需放任何文件。** 三个脚本分别粘贴到流水线同一个任务的三个"执行命令"步骤里，配置流水线变量，运行即可。
+> 能力：SAST 源码检测（增量+项目自动纳管+详情PDF+缺陷清单）/ SCA 组件检测（自动纳管+统计+SBOM(SPDX)+VEX(CSAF)）/ 钉钉聚合卡片（SAST+SCA 合并展示）。
 
-## 一、放文件（仓库管理员，5 分钟）
+## 一、前置准备（5 分钟）
 
-把交付包 `sec-kit/` 整个目录复制到仓库根并提交（纯脚本、无任何密钥，可直接入库）。
-
-## 二、建流水线（10 分钟）
-
-建议两条流水线（与 GitHub 版触发面对齐）：
-
-| 流水线 | 代码源触发 | 作用 |
+| # | 东西 | 从哪来 |
 |---|---|---|
-| 主流水线 | **提交/合并请求触发**（目标分支=默认分支） | 提交即扫：push 增量、MR 卡点 |
-| 定时巡检 | 不配代码源触发，用**定时触发**（如每天 09:30） | 强制全量巡检默认分支 |
+| 1 | CodeAI 访问令牌 | https://sast.igovee.com → 右上角头像 → 个人中心 → 访问令牌 |
+| 2 | SCA 访问令牌 | https://sca.igovee.com:30001 → 个人中心 → 访问令牌 |
+| 3 | 令牌归属人用户名 | 登录平台用的用户名（如 Pipeline_Test），决定自动建项目的项目经理与归属部门 |
+| 4 | 钉钉机器人（可选） | 群设置 → 机器人 → 添加"自定义(加签)"，得到 webhook + SEC 密钥 |
 
-每条流水线添加步骤：**构建 → 自定义 Shell**（或"空任务"步骤里的 Shell 执行），命令：
+## 二、流水线配置（10 分钟）
 
-```bash
-bash sec-kit/ci/yunxiao/yunxiao-security-step.sh
-```
+### 2.1 新建流水线
+https://flow.aliyun.com/my → 新建流水线 → 空模板 → 添加代码源（关联团队仓库，默认分支触发）
 
-> 云效托管构建机需能访问 CodeAI/SCA 平台地址与钉钉 webhook；自建构建机同理。
-> 步骤环境镜像选含 `curl jq zip python3 git` 的通用镜像（阿里云自带镜像均满足）。
+### 2.2 配置变量（流水线编辑页 → 变量和缓存 → 新建变量）
 
-## 三、配变量（流水线 → 变量与缓存，敏感项勾"私密"）
-
-**必填 5 项**：
-
-| 变量 | 值 | 私密 |
+| 变量名 | 值 | 私密模式 |
 |---|---|---|
-| `SAST_URL` | CodeAI 平台地址（结尾不带 /） | |
-| `SAST_TOKEN` | CodeAI 个人中心→访问令牌 | ✔ |
-| `SAST_USERNAME` | 令牌归属人平台用户名（自动设为项目经理/归属其部门） | |
-| `SCA_URL` | SCA 平台地址（必须带 :30001 端口） | |
-| `SCA_USER_TOKEN` | SCA 个人中心→访问令牌 | ✔ |
+| SAST_URL | https://sast.igovee.com | 否 |
+| SAST_TOKEN | （CodeAI 访问令牌） | **是** |
+| SAST_USERNAME | （令牌归属人平台用户名） | 否 |
+| SCA_URL | https://sca.igovee.com:30001 | 否 |
+| SCA_USER_TOKEN | （SCA 访问令牌） | **是** |
+| NOTIFY_WEBHOOK | （钉钉机器人 webhook） | **是** |
+| NOTIFY_SECRET | （钉钉加签密钥，SEC 开头） | **是** |
 
-**推荐配置**：
+可选：PROJECT_MEMBERS（额外项目成员，逗号分隔）、SECURITY_GATE=1（启用门禁阻断，默认仅告警）、TLS_INSECURE=1（自签证书）、SBOM_TYPES（默认"spdx vex"）
 
-| 变量 | 值 | 说明 |
-|---|---|---|
-| `NOTIFY_WEBHOOK` | 钉钉群机器人 Webhook（✔私密） | 流水线末尾自动推**聚合卡片**（SAST+SCA+SBOM 一条消息） |
-| `NOTIFY_SECRET` | 钉钉"加签"密钥（✔私密） | v2 聚合通知支持加签，机器人安全模式任选 |
-| `SCA_USERNAME` | SCA 令牌归属人用户名 | 不配时继承 SAST_USERNAME（同名时配一个即可） |
-| `PROJECT_MEMBERS` | 协作人用户名（逗号分隔） | 云效无组织成员开放 API，成员清单手工维护（季度核对一次）；平台项目成员还会按归属部门全员可见 |
+### 2.3 三个执行命令步骤（同一个任务内顺序添加）
 
-**按需**：`SECURITY_GATE`(门禁总开关)/`SAST_GATE`/`SCA_DEPS_GATE`、`SBOM_TYPES`(默认 `spdx vex`)、
-`ENABLE_SCA_ARTIFACT=1`+`SCAN_PATTERNS`(嵌入式制品扫描)、`TLS_INSECURE=1`(自签证书)、
-`ENABLE_SAST=0`/`ENABLE_SCA=0`(单独停某路)。
+**步骤1 — SAST 源码检测**：粘贴 `xmirror-sec-step1-sast.sh` 全部内容
+（自动：项目纳管→应用复用→增量/全量扫描→DEFECT 详情 PDF→缺陷清单 JSON）
 
-## 四、产物归档（每条流水线，2 分钟）
+**步骤2 — SCA 组件检测**：粘贴 `xmirror-sec-step2-sca.sh` 全部内容
+（自动：项目纳管→依赖扫描→统计→SBOM(SPDX)+VEX(CSAF) 导出→聚合钉钉卡片）
 
-流水线添加 **构建 → 构建产物** 步骤，勾选/填写路径：
+**步骤3 — 占位**：粘贴 `xmirror-sec-step3-notify.sh` 全部内容
+（聚合通知已并入步骤2末尾；本步骤保留占位，可直接删除）
 
+### 2.4 产物归档（否则报告只在容器里，运行完即丢）
+
+任务编辑面板 → 高级设置/构建产物 → 添加产物，路径填：
 ```
 sec-results/**
 sast_report.pdf
 ```
+产出清单：DEFECT 详情 PDF / 缺陷清单 JSON / SPDX SBOM / CSAF VEX / 缺陷全路径 HTML
 
-跑完后在流水线"产物"处可下载：详情报告 PDF、全缺陷+跟踪路径（JSON/HTML）、SPDX SBOM、VEX、Excel 检测报告。
+### 2.5 运行验证
 
-## 五、首次验证（照做即通）
+1. 点"保存并运行"，等待 5-8 分钟
+2. 验收：三步骤全绿 → 钉钉收到聚合卡片（缺陷四色+漏洞四色+组件/许可证统计+报告链接）→ 平台出现以仓库名命名的项目（项目经理=令牌归属人）
+3. 再提交一次代码：步骤1 日志出现"增量扫描"即增量生效
 
-1. 向默认分支提一个 commit → 主流水线自动运行 → 步骤日志出现 `灵脉CodeAI SAST 扫描开始` 与 `源鉴SCA 扫描开始`
-2. 跑完检查产物（见上）与钉钉聚合卡片
-3. 再提一个 commit → 日志出现 **"存在变更文件 → 增量扫描"** 即增量链路生效
-4. 平台核对：CodeAI/SCA 项目管理出现以仓库名命名的项目（项目经理=令牌归属人，部门=归属人部门）
+## 三、日常使用（零操作）
 
-## 六、常见问题
+| 行为 | 自动发生 |
+|---|---|
+| 提交代码 / 合并请求 | SAST 增量扫描 + SCA 依赖扫描 → 钉钉聚合卡片 |
+| 打 tag / 每日定时 | 全量扫描 |
+| 门禁 | 默认仅告警不阻断；启用配 SECURITY_GATE=1 |
+
+## 四、常见问题
 
 | 现象 | 处理 |
 |---|---|
-| 日志"缺少 curl/jq" | 构建镜像太精简——换通用镜像，或在步骤命令最前加安装行 |
-| 云效变量在脚本里读不到 | 确认配在"变量与缓存"且名称全大写一致；私密变量勾选了"私密" |
-| tag 触发想全量 | 步骤前置变量 `FORCE_FULL=1`，或依赖脚本对 `refs/tags/` 前缀的自动识别 |
-| 门禁想先只告警 | 不配 `SECURITY_GATE`（默认 0=只告警），观察 1–2 周再开 |
-| 与平台生成的 aliyun.sh 冲突 | 同一流水线**二选一**挂载（会重复扫描）；sec-kit 为完整版，aliyun.sh 仅作无 sec-kit 时的轻量兜底 |
-| 需要手动验证 | 构建机执行 §三 同名环境变量 + `bash sec-kit/bin/codeai-incremental-scan.sh`，成功则链路正常 |
+| 报"必填变量缺失" | 变量未配或拼写错误，对照 2.2 表逐字核对 |
+| 报 401/令牌无效 | 平台重新生成令牌，更新对应变量 |
+| 每次都是全量 | 首次正常（建基线）；之后应增量。若持续全量，检查代码源克隆方式为完整克隆 |
+| 卡片上 SCA 数据为 0 | 平台统计聚合需 2-3 分钟，脚本已自动等待补查；若仍为 0，下轮运行自动补齐 |
+| "上下文数据过大" | 单步骤脚本超 44KB 上限——使用配套精简版脚本（本指南所附即为精简版） |
+| 引擎并发超限(101103) | 错峰重试或联系悬镜扩容 |
+| 想单独停 SAST 或 SCA | 加变量 ENABLE_SAST=0 或 ENABLE_SCA=0 |
 
-## 七、变量对照（云效 ↔ GitHub 版）
+## 五、与 GitHub Actions 版的关系
 
-| 能力 | GitHub | 云效 |
-|---|---|---|
-| 平台地址 | vars.CODEAI_URL / SCA_URL | SAST_URL / SCA_URL |
-| 令牌 | secrets.CODEAI_TOKEN / SCA_USER_TOKEN | SAST_TOKEN / SCA_USER_TOKEN（私密） |
-| 令牌归属人 | vars.SAST_USERNAME / SCA_USERNAME | SAST_USERNAME / SCA_USERNAME |
-| 成员清单 | 自动拉 collaborators（PAT 兜底） | PROJECT_MEMBERS 手工清单 |
-| 门禁 | SECURITY_GATE+组件级 | SECURITY_GATE 或 SAST_GATE/SCA_DEPS_GATE |
-| 通知 | secrets.NOTIFY_* | NOTIFY_*（私密勾选） |
-| 分支/提交 | github.* 上下文 | CI_COMMIT_REF_NAME / CI_COMMIT_ID（脚本自动消费，缺省回退 git） |
+同一套扫描引擎与通知格式，变量名保持一致（SAST_URL/SAST_TOKEN/SAST_USERNAME/SCA_URL/SCA_USER_TOKEN/NOTIFY_WEBHOOK/NOTIFY_SECRET）。差异仅在接入形态：
+- GitHub Actions：yml + sec-kit/ 放代码仓库
+- 云效 Flow：三段脚本直接粘贴进流水线步骤，仓库零文件

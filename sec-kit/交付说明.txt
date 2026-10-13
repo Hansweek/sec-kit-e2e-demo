@@ -1,7 +1,28 @@
-智岩科技（Govee）· 研发安全工具链 GitHub × 云效 双平台对接交付包（2026-10-10）
+智岩科技（Govee）· 研发安全工具链 GitHub × 云效 双平台对接交付包 v6（2026-10-13）
+
+v6 关键变更（相对 v2）：
+  · 变量名 GitHub 与云效完全统一（SAST_URL/SAST_TOKEN/SAST_USERNAME/SCA_URL/
+    SCA_USER_TOKEN/NOTIFY_WEBHOOK/NOTIFY_SECRET），两个平台同一套变量名，无转换成本
+  · 云效接入形态定稿：同任务三个"执行命令"步骤分别粘贴三段脚本（单步骤≤44KB，
+    云效上下文限制实测约90KB总量），代码仓库零文件
+  · 聚合钉钉通知并入步骤2（SCA）末尾：SAST 统计从平台现查，一张卡片合并展示
+    （缺陷四色+漏洞四色+组件/许可证+双报告直达链接）
+  · 步骤3 保留为占位脚本（可删除）
 ====================================================================
 
-两个平台共用同一套 sec-kit/ 核心脚本与变量契约，升级只换 bin/，封装层不动。
+v2 相对首版（2026-10-10）的升级（全部经真实环境实测，见 README"v2 实测记录"）：
+  ① SAST 报告改为详情报告(reportComponent=DEFECT)，并归档"全缺陷+全跟踪路径"
+     （JSON+HTML，缺陷数量不限，每条缺陷含 来源→跟踪→爆发点 污点链）
+  ② SCA 扫描完成自动导出 SBOM(SPDX 2.3)+VEX(CSAF 2.0) 并随流水线归档
+     （默认类型 "spdx vex"，可加 cyclonedx；旧 CycloneDX 通道保留兜底）
+  ③ 项目自动纳管 v2：项目名=仓库名；项目经理=令牌归属人(SAST_USERNAME/SCA_USERNAME
+     解析)；归属部门=归属人部门；仓库协作人自动加入项目成员（GitHub 封装自动拉取
+     collaborators，GITHUB_TOKEN→只读PAT→手工清单 三级降级）
+  ④ 钉钉"聚合卡片"通知（sec-notify.sh 自搓 webhook，支持加签）：一张卡片汇总
+     SAST 四色统计+TOP高危缺陷定位、SCA 组件/漏洞统计+红线、SBOM/VEX 产物、
+     报告直达链接（SCA 免登录结果页）；默认仅门禁阻断时@人
+  ⑤ GitHub Actions 拆 SAST/SCA 双 job 并行 + report job 聚合归档，流水线墙钟
+     时间 = max(两路) 而非 sum
 
 本包内容与放置位置：
 
@@ -10,44 +31,50 @@
        （必须进默认分支：tag 触发与每日定时只认默认分支上的工作流文件）
 
   2) ci/yunxiao/（阿里云效 Flow）
-     → yunxiao-security-step.sh：统一接入步骤（SAST + SCA 一条命令，能力与
-       GitHub 封装对齐）。仓库根放入 sec-kit/ 后，流水线"自定义 Shell"步骤执行：
+     → yunxiao-security-step.sh：统一接入步骤（SAST + SCA + 聚合通知一条命令）
+       仓库根放入 sec-kit/ 后，流水线"自定义 Shell"步骤执行：
        bash sec-kit/ci/yunxiao/yunxiao-security-step.sh
-     → 云效Flow接入指南.md：云效界面配置（主流水线+定时巡检两条线、变量表、
-       产物归档、钉钉机器人、FAQ）
-     → ⚠ 与平台生成的 aliyun.sh（SAST 基础链路兜底）不可同时挂载，会重复扫描；
-       无 sec-kit 时的轻量兜底才用 aliyun.sh
+     → 云效Flow接入指南.md：云效界面配置（主流水线+定时巡检、变量表、产物归档、FAQ）
+     → ⚠ 与平台生成的 aliyun.sh（SAST 基础链路兜底）不可同时挂载，会重复扫描
 
-  3) bin/ 四个扫描脚本（即 sec-kit/，整个目录拷入仓库根目录）
-     → codeai-incremental-scan.sh   CodeAI 源码扫描（push 增量 / tag 全量 / 门禁 / 钉钉）
-     → codeai-scan.sh               CodeAI 全量扫描备用版（一般不用，故障兜底）
-     → sca-scan.sh                  源鉴SCA 依赖/制品扫描（含项目自动创建）
-     → sca-sbom.sh                  SBOM 导出（CycloneDX）
+  3) bin/ 五个核心脚本（即 sec-kit/，整个目录拷入仓库根目录）
+     → codeai-incremental-scan.sh   CodeAI 增量扫描/项目纳管v2/详情报告/全缺陷跟踪导出
+     → sca-scan.sh                  源鉴SCA 项目纳管v2/依赖与制品扫描/红线/统计/SBOM自动导出
+     → sca-sbom.sh                  SBOM+VEX 专用导出（SPDX/CycloneDX/CSAF）
+     → sec-notify.sh                聚合通知（钉钉加签/企微/飞书）
+     → codeai-scan.sh               CodeAI 全量扫描备用版（故障兜底）
      纯脚本、无任何密钥，可直接提交仓库。GitHub 与云效执行同一份文件。
 
   4) config.env.example
-     → 不进仓库。仅作 CI 变量命名对照表（GitHub Variables/Secrets 对照见文件末节；
-       云效变量名与主表一致，配到流水线"变量与缓存"，敏感项勾"私密"）。
+     → 不进仓库。接入方差异配置清单：▲必填 6 项（两平台地址/令牌、令牌归属人
+       用户名、钉钉 webhook）+ 全部可选项 + GitHub/云效变量命名对照表。
+       【作为示例交付时：让对方复制此文件逐项填写即可】
 
-  5) docs/客户使用指引.md ＋ docs/灵脉CodeAI×源鉴SCA对接GitHub操作指引V1.0.docx
-     → 管理员操作文档（GitHub 一页纸速查版 + 详细版，内容一致）。
-       云效以 ci/yunxiao/云效Flow接入指南.md 为准。
+  5) docs/
+     → 客户使用指引.md：管理员一页纸速查（接入/验证/开关/排障）
+     → 参数映射与设计说明.md：CI参数→统一契约→平台API 全映射与实测结论（对接方必读）
+     → 灵脉CodeAI×源鉴SCA对接GitHub操作指引V1.0.docx：详细版
+     → 现场作业单.md：首次交付执行清单
 
 上手顺序（GitHub，详见《客户使用指引》）：
-  配 Secrets（3 个）→ 配 Variables（2 个必填）→ 放文件合入 main → 提测试 PR 验证
+  配 Secrets（3 个：SAST_TOKEN / SCA_USER_TOKEN / NOTIFY_WEBHOOK[+NOTIFY_SECRET]）
+  → 配 Variables（3 个必填：SAST_URL / SAST_USERNAME / SCA_URL）
+  → 放文件合入 main → 提测试 PR 验证
 
 上手顺序（云效，详见《云效Flow接入指南》）：
   仓库根放 sec-kit/ → 建"主流水线 + 定时巡检"两条流水线 → 变量与缓存配变量
   （敏感项勾私密）→ 自定义 Shell 步骤执行 yunxiao-security-step.sh
-  → 构建产物勾 sast_report.pdf 与 sec-results/
+  → 构建产物勾 sec-results/** 与 sast_report.pdf
 
-项目维度归属（两个平台行为一致）：
-  SAST 配 SAST_PROJECT_NAME=仓库名（GitHub 侧变量名 CODEAI_PROJECT_NAME）→
-  平台无同名项目时自动创建，应用与扫描记录归入该项目；
-  SCA 的 provision 按仓库名自动建项目，天生项目制，零配置。
+项目维度归属（两个平台行为一致，v2 全自动）：
+  项目名=仓库名（零配置）；项目经理=令牌归属人；归属部门=归属人部门；
+  项目成员=仓库协作人（GitHub 自动拉取；云效用 PROJECT_MEMBERS 手工清单）。
+  SAST 扫描任务为增量扫描（平台基线 hash ↔ git diff，只扫变更文件）。
 
-验收标志：流水线绿 + 产物含报告 + 钉钉收卡片 + 第二次提交日志出现"增量扫描"
-（GitHub 看 Actions Artifact；云效看构建产物，并在平台"项目管理"下出现对应项目）。
+验收标志：
+  流水线绿 + 产物含（PDF详情报告 / sast-defects-full.json+html / SPDX SBOM /
+  VEX / Excel报告）+ 钉钉收到聚合卡片 + 第二次提交日志出现"增量扫描"
+  + 平台"项目管理"下出现仓库名项目（PM=令牌归属人）。
 
-问题排查：GitHub 见《客户使用指引》第五节；云效见《云效Flow接入指南》第五节；
+问题排查：GitHub 见《客户使用指引》第五节；云效见《云效Flow接入指南》第六节；
 解决不了请提供流水线日志最后 50 行联系悬镜技术支持。

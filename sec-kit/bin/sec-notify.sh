@@ -18,11 +18,12 @@
 #      sca-result-artifact.json   SCA 制品扫描结果
 #      sbom-info.json             SBOM/VEX 导出清单
 #    NOTIFY_WEBHOOK/NOTIFY_TYPE/NOTIFY_SECRET/NOTIFY_AT  通知配置(与扫描脚本同变量名)
-#    NOTIFY_TOP_N                 TOP缺陷条数(默认3, 0=不展示)
 #    NOTIFY_AT_ON_FAIL=1          默认: 仅门禁阻断时@手机号(0=总是@)
 #  退出码: 0=推送成功或未配置webhook  2=环境错误
 # ============================================================================
 set -uo pipefail
+# 抵消CI外层(云效等)可能继承的 errexit: 本脚本全程显式错误处理, 不依赖 -e
+set +e
 LOG_PREFIX="[NOTIFY]"
 log()  { echo "$LOG_PREFIX $(date '+%H:%M:%S') $*"; }
 warn() { echo "$LOG_PREFIX [警告] $*" >&2; }
@@ -37,7 +38,6 @@ NOTIFY_TYPE="${NOTIFY_TYPE:-dingtalk}"
 NOTIFY_SECRET="${NOTIFY_SECRET:-}"
 NOTIFY_AT="${NOTIFY_AT:-}"
 NOTIFY_AT_ON_FAIL="${NOTIFY_AT_ON_FAIL:-1}"
-NOTIFY_TOP_N="${NOTIFY_TOP_N:-3}"
 NOTIFY_TITLE_PREFIX="${NOTIFY_TITLE_PREFIX:-🛡️ 安全扫描}"
 BUILD_URL="${BUILD_URL:-}"
 REPO_LABEL="${REPO_LABEL:-}"                  # 卡片标题仓库名(缺省取应用名去分支后缀)
@@ -49,7 +49,6 @@ urlencode() { printf '%s' "$1" | jq -sRr '@uri'; }
 # ---- 读取结果文件 ----
 rj() { if [ -f "$1" ]; then cat "$1"; else echo '{}'; fi; }
 SAST=$(rj "$RESULT_DIR/codeai-result.json")
-DFULL=$(rj "$RESULT_DIR/sast-defects-full.json")
 SCA=$(rj "$RESULT_DIR/sca-result.json")
 SCAA=$(rj "$RESULT_DIR/sca-result-artifact.json")
 SBOM=$(rj "$RESULT_DIR/sbom-info.json")
@@ -67,29 +66,79 @@ for _f in "$SAST" "$SCA"; do
   fi
 done
 
+verdict_tag=""
+
+# ---- SAST 平台现查模式: 云效三步场景, 步骤2通知时无本地SAST结果文件, 从平台API查最新统计 ----
+if [ "$(echo "$SAST" | jq -r '.appName // empty' 2>/dev/null)" = "" ] \
+   && [ -n "${SAST_URL:-}" ] && [ -n "${SAST_TOKEN:-}" ] && [ -n "${APP_NAME:-}" ]; then
+  _tl=""; [ "${TLS_INSECURE:-0}" = "1" ] && _tl="-k"
+  _pname=$(echo "$SAST" | jq -r '.projectName // empty' 2>/dev/null)
+  [ -z "$_pname" ] && _pname="${SAST_PROJECT_NAME:-${APP_NAME%-*}}"
+  _proj=$(curl -s $_tl --max-time 60 -G --url "${SAST_URL}/sast/api-v1/open-api/project/page" \
+    --data-urlencode "pageNum=1" --data-urlencode "pageSize=50" \
+    --header "Sast-Token: ${SAST_TOKEN}" 2>/dev/null)
+  _proj_id=$(echo "$_proj" | jq -r --arg n "$_pname" '[.data.records[]? | select(.projectName==$n) | (.projectId|tostring)] | if length>0 then (max) else "" end' 2>/dev/null)
+  _app_id=""
+  if [ -n "$_proj_id" ]; then
+    _resp=$(curl -s $_tl --max-time 60 --url "${SAST_URL}/sast/api-v1/open-api/app/info/${_proj_id}?appName=${APP_NAME}&pageNum=1&pageSize=50" --header "Sast-Token: ${SAST_TOKEN}" 2>/dev/null)
+    _app_id=$(echo "$_resp" | jq -r --arg n "$APP_NAME" '[.data.records[]? | select(.appName==$n) | (.appId|tostring)] | if length>0 then (max) else "" end' 2>/dev/null)
+  fi
+  if [ -n "$_app_id" ] && [ "$_app_id" != "null" ]; then
+    _st=""
+    _best=0
+    _recs=$(curl -s $_tl --max-time 60 --url "${SAST_URL}/sast/api-v1/open-api/app/records/${_app_id}" --header "Sast-Token: ${SAST_TOKEN}" 2>/dev/null)
+    # 取全量口径: 历史任务中缺陷总数最大的一条(status=3 已完成)
+    _best_rec=$(echo "$_recs" | jq -c '[.data[]? | select(.status==3)] | if length>0 then (sort_by(-((.superCount//0)+(.highCount//0)+(.middleCount//0)+(.lowCount//0)))[0]) else empty end' 2>/dev/null)
+    if [ -n "$_best_rec" ] && [ "$_best_rec" != "null" ]; then
+      sup=$(echo "$_best_rec" | jq -r '.superCount // 0'); high=$(echo "$_best_rec" | jq -r '.highCount // 0')
+      mid=$(echo "$_best_rec" | jq -r '.middleCount // 0'); low=$(echo "$_best_rec" | jq -r '.lowCount // 0')
+      _st="ok"; _best=1
+    else
+      _st=$(curl -s $_tl --max-time 60 --url "${SAST_URL}/sast/api-v1/open-api/defect/jenkins/result?appId=${_app_id}" --header "Sast-Token: ${SAST_TOKEN}" 2>/dev/null)
+      sup=$(echo "$_st" | jq -r '[.data.openJenkinsFlawInfoMap[].superCount] | add // 0' 2>/dev/null)
+      high=$(echo "$_st" | jq -r '[.data.openJenkinsFlawInfoMap[].highCount] | add // 0' 2>/dev/null)
+      mid=$(echo "$_st" | jq -r '[.data.openJenkinsFlawInfoMap[].middleCount] | add // 0' 2>/dev/null)
+      low=$(echo "$_st" | jq -r '[.data.openJenkinsFlawInfoMap[].lowCount] | add // 0' 2>/dev/null)
+    fi
+    case "${sup}${high}${mid}${low}" in *null*|"") sup=0; high=0; mid=0; low=0 ;; esac
+    if [ "$((_best + 1))" = "1" ]; then log "SAST 统计已从平台现查(${APP_NAME}): ${sup}/${high}/${mid}/${low}"; fi
+    SAST=$(jq -n --arg app "$APP_NAME" --argjson s "$sup" --argjson h "$high" --argjson m "$mid" --argjson l "$low" \
+      --arg url "${SAST_URL}" --arg aid "$_app_id" \
+      '{appName:$app, defectCount:{super:$s, high:$h, middle:$m, low:$l}, platformUrl:$url,
+        detailUrl:($url+"/detection/code/"+$aid+"/details/result"), gateResult:"未启用(仅告警)", scanMode:"平台最新"}')
+  fi
+fi
+
 # ---- SCA 统计兜底: 扫描窗口内未就绪时(平台聚合滞后2-3分钟), 通知阶段补查 ----
 if [ "$(echo "$SCA" | jq -r '.vulNum // empty' 2>/dev/null)" = "" ] \
    && [ "$(echo "$SCA" | jq -r '.taskId // empty' 2>/dev/null)" != "" ] \
    && [ -n "${SCA_URL:-}" ] && [ -n "${SCA_USER_TOKEN:-}" ] && command -v curl >/dev/null 2>&1; then
   _tid=$(echo "$SCA" | jq -r '.taskId')
   _api=$(echo "$SCA_URL" | sed 's/:30001/:30002/')
-  _stat=$(curl -s -k --max-time 30 -H "OpenApiUserToken: ${SCA_USER_TOKEN}" "${_api}/openapi/v1/task/${_tid}" 2>/dev/null)
-  if echo "$_stat" | grep -q '"code":0'; then
-    _patch=$(echo "$_stat" | jq -c '{componentNum, componentSeriousNum, componentHighNum, componentMediumNum, componentLowNum, componentNormalNum, vulNum, vulSeriousNum, vulHighNum, vulMediumNum, vulLowNum, licenseNum, licenseHighNum, licenseMediumNum, licenseLowNum} | with_entries(select(.value!=null))' 2>/dev/null)
-    if [ "$(echo "$_patch" | jq -r '.vulNum // empty' 2>/dev/null)" != "" ]; then
-      SCA=$(echo "$SCA" | jq -c --argjson p "$_patch" '. + $p')
-      log "SCA 统计已补齐(vulNum=$(echo "$_patch" | jq -r '.vulNum'))"
+  for _try in 1 2 3; do
+    _stat=$(curl -s -k --max-time 30 -H "OpenApiUserToken: ${SCA_USER_TOKEN}" "${_api}/openapi/v1/task/${_tid}" 2>/dev/null)
+    if echo "$_stat" | grep -q '"code":0'; then
+      _patch=$(echo "$_stat" | jq -c '{componentNum, componentSeriousNum, componentHighNum, componentMediumNum, componentLowNum, componentNormalNum, vulNum, vulSeriousNum, vulHighNum, vulMediumNum, vulLowNum, licenseNum, licenseHighNum, licenseMediumNum, licenseLowNum} | with_entries(select(.value!=null))' 2>/dev/null)
+      if [ "$(echo "$_patch" | jq -r '.vulNum // empty' 2>/dev/null)" != "" ]; then
+        SCA=$(echo "$SCA" | jq -c --argjson p "$_patch" '. + $p')
+        log "SCA 统计已补齐(vulNum=$(echo "$_patch" | jq -r '.vulNum'))"
+        break
+      fi
     fi
-  fi
+    [ "$_try" = "3" ] || { sleep 20; log "SCA 统计未就绪, 20秒后补查($_try/3)"; }
+  done
 fi
 
 verdict=""
 
-# ================= SAST 段 =================
-SAST_SEC=""
-HEADLINE=""          # 首行数字摘要(缺陷+漏洞, 一眼看明白)
-GATE_NOTE=""         # 门禁状态注记
-verdict_tag="📋 检出摘要"   # 默认: 门禁未启用时的中性结论(绝不写"通过")
+# ================= 摘要数字(首行引用块, 一眼看明白) =================
+HEADLINE=""
+META_LINE=""
+GATE_LINES=""
+SAST_LINE=""
+SCA_LINES=""
+ART_LINE=""
+
 if [ "$(echo "$SAST" | jq -r '.appName // empty')" != "" ]; then
   has_any=1
   app=$(echo "$SAST" | jq -r '.appName')
@@ -105,126 +154,116 @@ if [ "$(echo "$SAST" | jq -r '.appName // empty')" != "" ]; then
   commit=$(echo "$SAST" | jq -r '.commit // empty')
   is_inc=$(echo "$SAST" | jq -r '.incremental // false')
   [ -z "$REPO_LABEL" ] && REPO_LABEL="${app%-*}"
-  case "$gate" in
-    *不通过*) verdict_tag="⛔ 门禁未通过" ;;
-    *通过*)   verdict_tag="✅ 门禁通过" ;;
-    *)        verdict_tag="📋 检出摘要（门禁未启用，仅统计不阻断）" ;;
-  esac
-  # 口径注记: 增量=仅变更文件
-  scope_note="本次全量检出"
-  [ "$is_inc" = "true" ] && scope_note="增量检出（仅变更文件；应用存量缺陷见平台）"
   sast_total=$((sup + high + mid + low))
-  HEADLINE="${HEADLINE}代码缺陷 **${sast_total}**（🔴${sup} 🟠${high} 🟡${mid} ⚪${low}）"
-  SAST_SEC="**① 源码检测 · 灵脉CodeAI**　${scope_note}
-- 缺陷 ${sast_total} 个：🔴 超危 **${sup}** ｜ 🟠 高危 **${high}** ｜ 🟡 中危 **${mid}** ｜ ⚪ 低危 **${low}**
-- 门禁：${gate}"
-  # TOP 高危缺陷(超危+高危; 路径取最后两级)
-  if [ "$NOTIFY_TOP_N" != "0" ] && [ "$(echo "$DFULL" | jq -r '.defects // [] | length' 2>/dev/null)" != "0" ]; then
-    top_list=$(echo "$DFULL" | jq -r --argjson n "$NOTIFY_TOP_N" '
-      [.defects[] | select(.riskLevel==1 or .riskLevel==2)] |
-      sort_by(.riskLevel) | .[0:$n] |
-      .[] | (.flawLocation // .fileName // "?") as $loc |
-      ($loc | split("/") | .[-2:] | join("/")) as $short |
-      "- " + (if .riskLevel==1 then "🔴" else "🟠" end) +
-        " **" + (.defectName // .ruleName // "未知") + "** " + $short + ":" + ((.startLine // "-")|tostring)' 2>/dev/null)
-    if [ -n "$top_list" ]; then
-      SAST_SEC="${SAST_SEC}
-**需优先处理：**
-${top_list}"
-    fi
-  fi
+  HEADLINE="代码缺陷 **${sast_total}**（🔴${sup} 🟠${high} 🟡${mid} ⚪${low}）"
+  # 增量口径注记(短): 平铺文案避免嵌套括号
+  mode_txt="$mode"
+  [ "$is_inc" = "true" ] && mode_txt="增量扫描·仅变更文件"
   detail_url=$(echo "$SAST" | jq -r '.detailUrl // empty')
   [ -z "$detail_url" ] && detail_url=$(echo "$SAST" | jq -r '.reportUrl // empty')
-  [ -n "$detail_url" ] && SAST_SEC="${SAST_SEC}
-- [缺陷清单与跟踪路径 →](${detail_url})"
-  META_LINE="${mode}${branch:+ ｜ ${branch}}${commit:+ ｜ $(printf '%.8s' "$commit")}${author:+ ｜ ${author}}${stime:+ ｜ ${stime}}"
-fi
-
-# ================= SCA 段 =================
-SCA_SEC=""
-sca_section() {  # sca_section <结果JSON> <标签> <序号>
-  local J="$1" label="$2" idx="$3" app gate url line comp_line lic_line
-  [ "$(echo "$J" | jq -r '.appName // empty' 2>/dev/null)" != "" ] || return 0
-  has_any=1
-  app=$(echo "$J" | jq -r '.appName')
-  gate=$(echo "$J" | jq -r '.gate // "未启用"')
-  url=$(echo  "$J" | jq -r '.resultUrl // ""')
-  [ -z "$REPO_LABEL" ] && REPO_LABEL="${app%-*}"
   case "$gate" in
-    *⛔*|*不通过*) line="⛔ **${gate}**"; verdict_tag="⛔ 门禁未通过" ;;
-    *通过*|*✅*) line="✅ ${gate}"
-      case "$verdict_tag" in
-        "⛔ 门禁未通过") : ;;
-        "📋 检出摘要"*) verdict_tag="✅ 门禁通过（SCA 红线；源码门禁未启用）" ;;
-        *) verdict_tag="✅ 门禁通过" ;;
-      esac ;;
-    *) line="ℹ️ ${gate}" ;;
+    *不通过*) verdict_tag="⛔ 门禁未通过"; GATE_LINES="- 源码门禁：⛔ 未通过" ;;
+    *通过*)   verdict_tag="✅ 门禁通过";   GATE_LINES="- 源码门禁：✅ 通过" ;;
+    *)        verdict_tag="📋 检出摘要（门禁未启用）"; sast_gate_line="未启用（仅统计不阻断）" ;;
   esac
-  comp_line=""
-  if [ "$(echo "$J" | jq -r '.componentNum // empty' 2>/dev/null)" != "" ]; then
-    comp_line="- 组件 **$(echo "$J" | jq -r '.componentNum')** 个：🔴严重 $(echo "$J" | jq -r '.componentSeriousNum // 0') ｜ 🟠 高危 $(echo "$J" | jq -r '.componentHighNum // 0') ｜ 🟡 中危 $(echo "$J" | jq -r '.componentMediumNum // 0') ｜ ⚪ 低危 $(echo "$J" | jq -r '.componentLowNum // 0') ｜ ✅ 无风险 $(echo "$J" | jq -r '.componentNormalNum // 0')"
-  fi
-  lic_line=""
-  if [ "$(echo "$J" | jq -r '.licenseNum // empty' 2>/dev/null)" != "" ]; then
-    lic_line="- 许可证 **$(echo "$J" | jq -r '.licenseNum')** 项（🔴 高风险 **$(echo "$J" | jq -r '.licenseHighNum // 0')** ｜ 🟡 中 $(echo "$J" | jq -r '.licenseMediumNum // 0') ｜ ⚪ 低 $(echo "$J" | jq -r '.licenseLowNum // 0')）"
-  fi
-  SCA_SEC="${SCA_SEC}**${idx} 组件检测 · 源鉴SCA（${label}）**
-- 漏洞 **$(echo "$J" | jq -r '.vulNum // 0')** 个：🔴 **$(echo "$J" | jq -r '.vulSeriousNum // 0')** ｜ 🟠 **$(echo "$J" | jq -r '.vulHighNum // 0')** ｜ 🟡 $(echo "$J" | jq -r '.vulMediumNum // 0') ｜ ⚪ $(echo "$J" | jq -r '.vulLowNum // 0')${comp_line:+
-${comp_line}}${lic_line:+
-${lic_line}}
-- 质量红线：${line}
-- [完整检测报告（免登录直达） →](${url})
-
-"
-}
-sca_section "$SCA"  "依赖分析" "②"
-if [ -n "$SCA_SEC" ]; then
-  vul_total=$(echo "$SCA" | jq -r '.vulNum // 0')
-  vs=$(echo "$SCA" | jq -r '.vulSeriousNum // 0'); vh=$(echo "$SCA" | jq -r '.vulHighNum // 0')
-  [ -n "$HEADLINE" ] && HEADLINE="${HEADLINE}　｜　"
-  HEADLINE="${HEADLINE}开源漏洞 **${vul_total}**（🔴${vs} 🟠${vh}）"
+  sast_url_line="${detail_url:-}"
+  sast_line_txt="**源码检测**（${mode_txt}）"
+  [ -n "$detail_url" ] && sast_line_txt="${sast_line_txt} ｜ [缺陷详情 →](${detail_url})"
+  SAST_LINE="$sast_line_txt"
+  META_LINE="${branch:+${branch} ｜ }$(printf '%.8s' "${commit:-}")${author:+ ｜ ${author}}${stime:+ ｜ ${stime}}"
 fi
-sca_section "$SCAA" "制品成分" "③"
 
-# ================= SBOM/VEX 段 =================
-SBOM_SEC=""
+if [ "$(echo "$SCA" | jq -r '.appName // empty' 2>/dev/null)" != "" ]; then
+  has_any=1
+  app=$(echo "$SCA" | jq -r '.appName')
+  url=$(echo  "$SCA" | jq -r '.resultUrl // ""')
+  gate=$(echo "$SCA" | jq -r '.gate // "未启用"')
+  [ -z "$REPO_LABEL" ] && REPO_LABEL="${app%-*}"
+  v=$(echo "$SCA" | jq -r '.vulNum // empty')
+  if [ -n "$v" ]; then
+    sca_v="$v"
+    vs=$(echo "$SCA" | jq -r '.vulSeriousNum // 0'); vh=$(echo "$SCA" | jq -r '.vulHighNum // 0')
+    vm=$(echo "$SCA" | jq -r '.vulMediumNum // 0'); vl=$(echo "$SCA" | jq -r '.vulLowNum // 0')
+    sca_vs=$vs; sca_vh=$vh; sca_vm=$vm; sca_vl=$vl
+    sca_comp=$(echo "$SCA" | jq -r '.componentNum // 0')
+    sca_cs=$(echo "$SCA" | jq -r '.componentSeriousNum // 0'); sca_ch=$(echo "$SCA" | jq -r '.componentHighNum // 0')
+    sca_cm=$(echo "$SCA" | jq -r '.componentMediumNum // 0'); sca_cn=$(echo "$SCA" | jq -r '.componentNormalNum // 0')
+    sca_lic=$(echo "$SCA" | jq -r '.licenseNum // 0'); sca_lh=$(echo "$SCA" | jq -r '.licenseHighNum // 0')
+    _sep="　｜　"; [ -z "$HEADLINE" ] && _sep=""
+    HEADLINE="${HEADLINE}${_sep}开源漏洞 **${v}**（🔴${vs} 🟠${vh} 🟡${vm} ⚪${vl}）"
+    HEADLINE2="组件 **$(echo "$SCA" | jq -r '.componentNum // 0')**（🔴$(echo "$SCA" | jq -r '.componentSeriousNum // 0') 🟠$(echo "$SCA" | jq -r '.componentHighNum // 0') 🟡$(echo "$SCA" | jq -r '.componentMediumNum // 0') ✅$(echo "$SCA" | jq -r '.componentNormalNum // 0')）　许可证 **$(echo "$SCA" | jq -r '.licenseNum // 0')** 项（🔴高风险 $(echo "$SCA" | jq -r '.licenseHighNum // 0')）"
+    # 组件/许可证行(基础数据)
+    comp_line=""
+    if [ "$(echo "$SCA" | jq -r '.componentNum // empty')" != "" ]; then
+      comp_line="组件 **$(echo "$SCA" | jq -r '.componentNum')** 个（🔴$(echo "$SCA" | jq -r '.componentSeriousNum // 0') 🟠$(echo "$SCA" | jq -r '.componentHighNum // 0') 🟡$(echo "$SCA" | jq -r '.componentMediumNum // 0') ✅$(echo "$SCA" | jq -r '.componentNormalNum // 0')）"
+    fi
+    lic_line=""
+    if [ "$(echo "$SCA" | jq -r '.licenseNum // empty')" != "" ]; then
+      lic_line="许可证 **$(echo "$SCA" | jq -r '.licenseNum')** 项（🔴高风险 $(echo "$SCA" | jq -r '.licenseHighNum // 0')）"
+    fi
+    SCA_LINES=""
+  fi
+  case "$gate" in
+    *⛔*|*不通过*) sca_gate_line="⛔ 未通过"; verdict_tag="⛔ 门禁未通过"; GATE_LINES="${GATE_LINES:+${GATE_LINES}
+}- SCA红线：⛔ 未通过" ;;
+    *通过*|*✅*)   sca_gate_line="✅ 通过"; GATE_LINES="${GATE_LINES:+${GATE_LINES}
+}- SCA红线：✅ 通过" ;;
+    *)             sca_gate_line="未启用" ;;
+  esac
+  sca_line="${url:-}"
+  sca_line_txt="**组件检测**（依赖分析）"
+  [ -n "$url" ] && sca_line_txt="${sca_line_txt} ｜ [检测报告(免登录) →](${url})"
+  SCA_MAIN_LINE="$sca_line_txt"
+fi
+
+# 制品扫描(如有)
+if [ "$(echo "$SCAA" | jq -r '.appName // empty' 2>/dev/null)" != "" ]; then
+  has_any=1
+  aurl=$(echo "$SCAA" | jq -r '.resultUrl // ""')
+  av=$(echo "$SCAA" | jq -r '.vulNum // empty')
+  art_txt="**制品检测**（固件/产物成分）"
+  [ -n "$av" ] && art_txt="${art_txt}：漏洞 ${av}（🔴$(echo "$SCAA" | jq -r '.vulSeriousNum // 0') 🟠$(echo "$SCAA" | jq -r '.vulHighNum // 0')）"
+  [ -n "$aurl" ] && art_txt="${art_txt} ｜ [报告 →](${aurl})"
+  ART_LINE="$art_txt"
+fi
+
+# SBOM 产物(一行)
+SBOM_LINE=""
 if [ "$(echo "$SBOM" | jq -r '.files // [] | length' 2>/dev/null)" != "0" ]; then
   has_any=1
-  sbom_counts=$(echo "$SBOM" | jq -r '.files | group_by(.desc)[] | "- " + (length|tostring) + " 份 " + (.[0].desc)' 2>/dev/null)
-  SBOM_SEC="**④ SBOM / VEX 产物**（随流水线归档）
-
-${sbom_counts}"
+  sbom_kinds=$(echo "$SBOM" | jq -r '.files | group_by(.desc)[] | (.[0].desc)' 2>/dev/null | sed 'N;s/\n/ ｜ /g')
+  SBOM_LINE="SBOM/VEX 产物已归档：${sbom_kinds}"
 fi
 
 [ "$has_any" = "1" ] || { log "sec-results/ 下无扫描结果，跳过通知"; exit 0; }
 [ -n "$NOTIFY_WEBHOOK" ] || { log "未配置 NOTIFY_WEBHOOK，跳过推送(结果见流水线日志与产物)"; exit 0; }
 
 # ================= 拼装 =================
-LINK_SEC="**⑤ 报告获取**"
-[ -n "$BUILD_URL" ] && LINK_SEC="${LINK_SEC}
-
-- [全套报告（PDF详情 / 缺陷全路径HTML / SBOM / VEX / Excel）](${BUILD_URL})"
+[ -n "$verdict_tag" ] || verdict_tag="📋 检出摘要（门禁未启用）"
 
 # ---- 统一裁决: ✅门禁通过 但存在未启用门禁时, 明示范围避免误读 ----
 if [ "$verdict_tag" = "✅ 门禁通过" ]; then
   _mixed=0
   echo "$SAST" | jq -r '.gateResult // "未启用"' 2>/dev/null | grep -q "未启用" && _mixed=1
   echo "$SCA"  | jq -r '.gate // "未启用"' 2>/dev/null    | grep -q "未启用" && _mixed=1
-  [ "$_mixed" = "1" ] && verdict_tag="✅ 门禁通过（部分门禁未启用，见分段明细）"
+  [ "$_mixed" = "1" ] && verdict_tag="✅ 门禁通过（部分门禁未启用）"
 fi
 
 TITLE="${NOTIFY_TITLE_PREFIX}｜${REPO_LABEL:-应用}${SKU_LABEL:+｜${SKU_LABEL}}"
+
+# ---- 正文: 每行 "- " 列表前缀(钉钉markdown单\n不换行, 列表才可靠分行) ----
 BODY="## ${REPO_LABEL:-应用} · 安全扫描 ${verdict_tag}
 
 > ${HEADLINE}
 
-${META_LINE:+> ${META_LINE}
-}
-
-${SAST_SEC}
-
-${SCA_SEC}${SBOM_SEC}
-${LINK_SEC}"
+- 🖥 源码检测（${mode_txt:-}）: 缺陷 ${sast_total:-0}（🔴${sup:-0} 🟠${high:-0} 🟡${mid:-0} ⚪${low:-0}）
+- 门禁: ${sast_gate_line:-未启用（仅统计）}
+- 📦 组件检测: 漏洞 ${sca_v:-0}（🔴${sca_vs:-0} 🟠${sca_vh:-0} 🟡${sca_vm:-0} ⚪${sca_vl:-0}）
+- 组件 ${sca_comp:-0} 个（🔴${sca_cs:-0} 🟠${sca_ch:-0} 🟡${sca_cm:-0} ✅${sca_cn:-0}）｜ 许可证 ${sca_lic:-0} 项（🔴高风险 ${sca_lh:-0}）
+${sca_line:+- [SCA 检测报告（免登录直达） →](${sca_line})
+}${sast_url_line:+- [SAST 缺陷详情与跟踪路径 →](${sast_url_line})
+}- 📎 产物已归档: ${SBOM_SHORT:-SPDX SBOM · CSAF VEX · PDF · Excel}${BUILD_URL:+
+- [全套报告下载 →](${BUILD_URL})}"
 
 # ---- 超长保护: 钉钉 markdown 消息上限约20KB, 超长会发送失败——截断并提示 ----
 _body_len=$(printf '%s' "$BODY" | wc -c | tr -d ' ')

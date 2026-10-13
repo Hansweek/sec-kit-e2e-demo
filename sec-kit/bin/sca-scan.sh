@@ -64,6 +64,8 @@
 #  退出码: 0=成功  1=门禁未通过  2=脚本/环境错误
 # ============================================================================
 set -uo pipefail
+# 抵消CI外层(云效等)可能继承的 errexit: 本脚本全程显式错误处理, 不依赖 -e
+set +e
 
 # ============================================================================
 # 【公共区】配置默认值与工具函数
@@ -80,6 +82,12 @@ field_str() { echo "$1" | sed -n 's/.*"'"$2"'":[[:space:]]*"\([^"]*\)".*/\1/p' |
 field_num() { echo "$1" | grep -Eo "\"$2\"[[:space:]]*:[[:space:]]*[0-9]+" | head -n1 | grep -Eo '[0-9]+$'; }
 json_esc()  { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
 md5_file()  { if command -v md5sum >/dev/null 2>&1; then md5sum -b "$1" | awk '{print $1}'; else md5 -q "$1"; fi; }
+
+# 结果推送: 钉钉/企微/飞书群机器人(自足默认, 防CI环境未注入时 set -u 报未绑定)
+NOTIFY_WEBHOOK="${NOTIFY_WEBHOOK:-}"
+NOTIFY_TYPE="${NOTIFY_TYPE:-dingtalk}"    # dingtalk | wecom | feishu | raw
+NOTIFY_SECRET="${NOTIFY_SECRET:-}"        # 钉钉"加签"密钥(未启用则留空)
+NOTIFY_AT="${NOTIFY_AT:-}"                # 钉钉@手机号，逗号分隔
 
 SCA_URL="${SCA_URL:-}"
 case "$SCA_URL" in
