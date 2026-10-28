@@ -118,7 +118,7 @@ if [ "$(echo "$SCA" | jq -r '.vulNum // empty' 2>/dev/null)" = "" ] \
   for _try in 1 2 3 4 5 6 7 8 9 10; do
     _stat=$(curl -s -k --max-time 30 -H "OpenApiUserToken: ${SCA_USER_TOKEN}" "${_api}/openapi/v1/task/${_tid}" 2>/dev/null)
     if echo "$_stat" | grep -q '"code":0'; then
-      _patch=$(echo "$_stat" | jq -c '{componentNum, componentSeriousNum, componentHighNum, componentMediumNum, componentLowNum, componentNormalNum, vulNum, vulSeriousNum, vulHighNum, vulMediumNum, vulLowNum, licenseNum, licenseHighNum, licenseMediumNum, licenseLowNum} | with_entries(select(.value!=null))' 2>/dev/null)
+      _patch=$(echo "$_stat" | jq -c '(.data // .) | {componentNum, componentSeriousNum, componentHighNum, componentMediumNum, componentLowNum, componentNormalNum, vulNum, vulSeriousNum, vulHighNum, vulMediumNum, vulLowNum, licenseNum, licenseHighNum, licenseMediumNum, licenseLowNum} | with_entries(select(.value!=null))' 2>/dev/null)
       if [ "$(echo "$_patch" | jq -r '.vulNum // empty' 2>/dev/null)" != "" ]; then
         SCA=$(echo "$SCA" | jq -c --argjson p "$_patch" '. + $p')
         log "SCA 统计已补齐(vulNum=$(echo "$_patch" | jq -r '.vulNum'))"
