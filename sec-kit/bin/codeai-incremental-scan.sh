@@ -438,7 +438,8 @@ elif [ -n "$CI_COMMIT_TAG" ]; then
 else
   hash=$(sast_curl --url "${SAST_URL}/sast/api-v1/open-api/app/git/hash/${app_id}" --header "Sast-Token: ${SAST_TOKEN}" | jq -r '.data')
   if [ "$hash" = "null" ] || [ -z "$hash" ]; then
-    _cached=$(tr -d ' \r\n' < "${BASELINE_CACHE_DIR}/${SAFE_NAME}" 2>/dev/null)
+    _cached=""
+    [ -r "${BASELINE_CACHE_DIR}/${SAFE_NAME}" ] && _cached=$(tr -d ' \r\n' < "${BASELINE_CACHE_DIR}/${SAFE_NAME}" 2>/dev/null)
     if [ -n "$_cached" ] && git -C "$SCAN_DIR" cat-file -e "${_cached}^{commit}" 2>/dev/null; then
       hash="$_cached"; BASELINE_SRC="CI缓存"
       log "平台基线缺失(增量任务后平台不回写), 回退CI缓存基线: ${hash}"
@@ -472,9 +473,11 @@ add_task_json=$(jq -n \
     taskSourceType:$src, detectionType:"1", scanningMode:$detmode,
     taintSetsId:"0", sensitiveSetsId:"0", sensitiveSetsName:"",
     taskConfig:{credibleSourceId:"0"}, description:""}')
+# incrementSwitch 必须显式携带: 平台将其作为应用级持久属性, 缺省时沿用应用上一次的模式
+# (实测: 应用上次为增量而本次缺省不传 → 平台按增量受理但无diff文件 → 8秒即status=4检测失败)
 if [ "${increment}" = "1" ]; then
   add_task_json=$(echo "$add_task_json" | jq -c '. + {incrementSwitch:"1"}')
-elif [ "${app_existed}" = "0" ]; then
+else
   add_task_json=$(echo "$add_task_json" | jq -c '. + {incrementSwitch:"0"}')
 fi
 curl_args=(-s $TLS_FLAGS --request POST --url "${SAST_URL}/sast/api-v1/open-api/app/saveOrAgainTask"
