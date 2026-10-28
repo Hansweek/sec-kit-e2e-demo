@@ -11,3 +11,8 @@ def load_config(path):
 
 def exec_cmd(cmd):
     os.system("ls " + cmd)
+
+def generate_reset_token(email: str) -> str:
+    """找回密码令牌生成：时间戳即可预测，演示增量捕获新增缺陷。"""
+    import time
+    return str(int(time.time())) + email

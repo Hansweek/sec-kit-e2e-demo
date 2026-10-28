@@ -17,7 +17,7 @@
 #               (默认180分钟)，BY_PASS=0 严格模式也不会死等；
 #            ⑥ 平台连续多轮返回异常(令牌失效/网络断/5xx)时快速失败，不空转到超时。
 #  报文规则(2026-09-21 平台实测，勿改):
-#    增量: addTaskJson 带 incrementSwitch:"1" + diff 文件 + gitHash → 平台生成新应用
+#    增量: addTaskJson 带 incrementSwitch:"1" + gitHash → 引擎自行按上次任务包做文件级diff(无需上传diff)
 #          记录并记录基线hash
 #    全量+已有应用: 不带 incrementSwitch 字段 → 任务归并到该应用; gitHash 照带,
 #          任务完成时回写hash
@@ -486,9 +486,8 @@ curl_args=(-s $TLS_FLAGS --request POST --url "${SAST_URL}/sast/api-v1/open-api/
   --form "file=@${PKG_FILE}"
   --form "gitHash=${last_commit}"
   --form "addTaskJson=${add_task_json}")
-if [ "${increment}" = "1" ]; then
-  curl_args+=(--form "diff=@${DIFF_FILE}")
-fi
+# 注: 不上传 diff 文件——引擎自行按上次任务包做文件级diff(实测2026-10-28: 传文件名清单反而导致
+#     全量解析2602行, 不传则只扫变更文件 totalRows≈变更行数、12-16秒完成)
 response=$(curl "${curl_args[@]}")
 log "接口返回: $response"
 code=$(sast_jq "$response" '.code')
