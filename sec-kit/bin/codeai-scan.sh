@@ -44,6 +44,10 @@ PROJECT_ID="${PROJECT_ID:-0}"             # PROJECT_MODE=2 时填项目管理里
 SCAN_DIR="${SCAN_DIR:-$PWD}"              # 要打包扫描的目录，默认当前目录(workspace/CI目录)
 EXCLUDES="${EXCLUDES:-.git node_modules target build dist .idea .vscode *.log *.zip codeai-scan.sh sast_report.pdf}"  # 打包时排除的目录/文件
 REPORT_DIR="${REPORT_DIR:-$SCAN_DIR}"    # PDF报告落盘目录(Jenkins里可指向工作区以便归档)
+# 报告包含的审计状态(0未审计 1已审计-误报 2已审计-忽略 3超危 4高危 5中危 6低危 7已修复)
+# 默认排除 1(误报) 2(忽略)：已判定为非问题的条目不再进入报告
+SAST_REPORT_AUDIT_STATUS="${SAST_REPORT_AUDIT_STATUS:-0,3,4,5,6}"
+SAST_REPORT_KIND="${SAST_REPORT_KIND:-DEFECT}"   # DEFECT=详情报告(默认) ANALYSE=概要报告
 POLL_INTERVAL="${POLL_INTERVAL:-15}"     # 轮询结果的间隔秒数
 TIMEOUT_MINUTES="${TIMEOUT_MINUTES:-60}" # 等待扫描结果的最大分钟数，超时按BY_PASS策略处理
                                          # 注意: 平台为共享资源时(其他项目也在扫)任务会排队,
@@ -360,14 +364,27 @@ LOW_COUNT=$(sast_jq "$result_resp" '[.data.openJenkinsFlawInfoMap[].lowCount] | 
 log "缺陷统计: 超危=${SUPER_COUNT} 高危=${HIGH_COUNT} 中危=${MIDDLE_COUNT} 低危=${LOW_COUNT}"
 
 # ---------------------------------------------------------------------------
-# 第5步: 生成并下载PDF报告 (reportType=1 概览报告；2为详细报告)
+# 第5步: 生成并下载PDF报告 (common 端点=详情报告且支持审计状态过滤；blue 端点=旧版兜底)
 # ---------------------------------------------------------------------------
-log "生成检测报告..."
+log "生成检测报告(审计状态=${SAST_REPORT_AUDIT_STATUS})..."
 enc_name=$(urlencode "${APP_NAME}")
-report_resp=$(sast_curl --request GET \
-    --url "${SAST_URL}/sast/api-v1/open-api/defect/blue/generate/report?reportType=1&taskId=${TASK_ID}&reportName=${enc_name}&appId=${APP_ID}" \
-    -H "Sast-Token: ${SAST_TOKEN}")
+AUDIT_STATUS_JSON=$(printf '%s' "${SAST_REPORT_AUDIT_STATUS}" | tr -d ' ' \
+  | jq -R 'split(",") | map(select(test("^[0-9]+$")) | tonumber)' 2>/dev/null)
+[ -n "$AUDIT_STATUS_JSON" ] && [ "$AUDIT_STATUS_JSON" != "[]" ] || AUDIT_STATUS_JSON='[0,3,4,5,6]'
+report_resp=$(sast_curl --request POST \
+    --url "${SAST_URL}/sast/api-v1/open-api/defect/common/generate/report" \
+    -H "Sast-Token: ${SAST_TOKEN}" -H "Content-Type: application/json" \
+    -d "$(jq -n --arg rn "${APP_NAME}" --arg app "${APP_ID}" --arg tid "${TASK_ID}" \
+        --arg rc "${SAST_REPORT_KIND}" --argjson ast "${AUDIT_STATUS_JSON}" \
+        '{reportType:1, reportName:$rn, appId:$app, taskId:$tid, reportComponent:$rc, auditStatusType:$ast}')")
 REPORT_ID=$(sast_jq "$report_resp" '.data')
+if [ -z "$REPORT_ID" ] || [ "$REPORT_ID" = "null" ]; then
+  warn "common端点未受理($(echo "$report_resp" | head -c 120))，回退blue端点(不支持审计状态过滤)"
+  report_resp=$(sast_curl --request GET \
+      --url "${SAST_URL}/sast/api-v1/open-api/defect/blue/generate/report?reportType=1&taskId=${TASK_ID}&reportName=${enc_name}&appId=${APP_ID}" \
+      -H "Sast-Token: ${SAST_TOKEN}")
+  REPORT_ID=$(sast_jq "$report_resp" '.data')
+fi
 if [ -z "$REPORT_ID" ] || [ "$REPORT_ID" = "null" ]; then
   warn "报告创建失败(平台返回:$report_resp)，跳过报告下载"
 else
@@ -377,15 +394,24 @@ else
   while [ "$r_status" != "2" ]; do
     sleep 5
     r_status=$(sast_curl --request GET \
-        --url "${SAST_URL}/sast/api-v1/open-api/defect/blue/generate/report/status?reportId=${REPORT_ID}" \
+        --url "${SAST_URL}/sast/api-v1/open-api/defect/common/generate/report/status?reportId=${REPORT_ID}" \
         -H "Sast-Token: ${SAST_TOKEN}" | jq -r '.data.status' 2>/dev/null)
-    if [ $(( $(date +%s) - r_start )) -gt 300 ]; then warn "报告生成超时(5分钟)，跳过下载"; break; fi
+    if [ $(( $(date +%s) - r_start )) -gt 600 ]; then warn "报告生成超时(10分钟)，跳过下载"; break; fi
   done
   if [ "$r_status" = "2" ]; then
     sast_curl --request GET \
-        --url "${SAST_URL}/sast/api-v1/open-api/defect/blue/download/report?reportId=${REPORT_ID}" \
+        --url "${SAST_URL}/sast/api-v1/open-api/defect/common/download/report?reportId=${REPORT_ID}" \
         -H "Sast-Token: ${SAST_TOKEN}" -o "${REPORT_DIR}/sast_report.pdf"
-    log "PDF报告已下载: ${REPORT_DIR}/sast_report.pdf"
+    if head -c 4 "${REPORT_DIR}/sast_report.pdf" 2>/dev/null | grep -q "%PDF"; then
+      log "PDF报告已下载: ${REPORT_DIR}/sast_report.pdf"
+    else
+      warn "common下载失败，尝试blue端点..."
+      sast_curl --request GET \
+          --url "${SAST_URL}/sast/api-v1/open-api/defect/blue/download/report?reportId=${REPORT_ID}" \
+          -H "Sast-Token: ${SAST_TOKEN}" -o "${REPORT_DIR}/sast_report.pdf"
+      head -c 4 "${REPORT_DIR}/sast_report.pdf" 2>/dev/null | grep -q "%PDF" \
+        && log "PDF报告已下载: ${REPORT_DIR}/sast_report.pdf" || warn "报告下载失败(保留平台侧报告记录)"
+    fi
   fi
 fi
 

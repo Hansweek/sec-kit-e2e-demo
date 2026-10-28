@@ -86,7 +86,11 @@ POLL_INTERVAL="${POLL_INTERVAL:-30}"      # 轮询间隔秒数
 REPORT_DIR="${REPORT_DIR:-$SCAN_DIR}"     # PDF 报告落盘目录
 RESULT_JSON_FILE="${RESULT_JSON_FILE:-}"  # 结构化结果JSON落盘路径(供下游消费，可留空)
 # ---- v2: 报告与导出 ----
-SAST_REPORT_KIND="${SAST_REPORT_KIND:-DEFECT}"   # DEFECT=详情报告(默认,每缺陷类型全量条目) ANALYSE=概要报告
+SAST_REPORT_KIND="${SAST_REPORT_KIND:-ANALYSE}"  # ANALYSE=概要报告(默认,图表化重点视图) DEFECT=详情报告 BOTH=概要+重点详情双报告
+BASELINE_CACHE_DIR="${BASELINE_CACHE_DIR:-$SCAN_DIR/.sast-baseline}"  # CI侧增量基线缓存(平台基线缺失时兜底, CI缓存跨次保留)
+# 报告包含的审计状态(平台审计状态枚举 0未审计 1已审计-误报 2已审计-忽略 3超危 4高危 5中危 6低危 7已修复)
+# 默认排除 1(误报) 2(忽略)：已判定为非问题的条目不再进入报告与缺陷清单
+SAST_REPORT_AUDIT_STATUS="${SAST_REPORT_AUDIT_STATUS:-0,3,4,5,6}"
 EXPORT_DIR="${EXPORT_DIR:-$SCAN_DIR/sec-results}"  # 全缺陷+跟踪路径导出目录(与SCA产物同目录,便于统一归档)
 EXPORT_DEFECTS="${EXPORT_DEFECTS:-1}"       # 1=导出全缺陷+全跟踪路径(JSON+HTML) 0=关闭(大仓库赶时间时)
 DEFECTS_PAGE_SIZE="${DEFECTS_PAGE_SIZE:-200}"     # defect/issue 分页大小(平台接受200,数量不限=自动翻页)
@@ -419,28 +423,39 @@ if [ -z "$app_id" ] || [ "$app_id" = "null" ]; then
   die "appId 解析失败: 请检查 ①SAST_TOKEN 是否有效(个人中心→访问令牌) ②${SAST_URL} 从本执行机是否可达 ③平台版本是否支持该接口"
 fi
 
-# ---- ④ 计算增量范围：平台侧上次扫描 hash ↔ 本次提交 的变更文件清单 ----
+# ---- ④ 计算增量范围：上次扫描 hash ↔ 本次提交 的变更文件清单 ----
+# 基线来源两级: ①平台 open-api/app/git/hash/{appId}(全量任务后会回写)
+#              ②CI侧缓存文件(兜底: 5.0实测增量任务完成后平台不回写gitHash,
+#                若只依赖平台基线会出现"增量→全量→增量"交替, 见2026-10-28排查)
 increment=0
 SCAN_TYPE_DESC="全量扫描"
 DIFF_FILE="${SCAN_DIR}/${SAFE_NAME}.txt"
+BASELINE_SRC="平台"
 if [ "$FORCE_FULL" = "1" ]; then
   log "强制全量(FORCE_FULL=1，定时巡检/手动指定)"
 elif [ -n "$CI_COMMIT_TAG" ]; then
   log "发版(tag=${CI_COMMIT_TAG})触发 → 全量扫描"
 else
   hash=$(sast_curl --url "${SAST_URL}/sast/api-v1/open-api/app/git/hash/${app_id}" --header "Sast-Token: ${SAST_TOKEN}" | jq -r '.data')
-  echo "平台侧上次扫描 hash: ${hash}"
+  if [ "$hash" = "null" ] || [ -z "$hash" ]; then
+    _cached=$(tr -d ' \r\n' < "${BASELINE_CACHE_DIR}/${SAFE_NAME}" 2>/dev/null)
+    if [ -n "$_cached" ] && git -C "$SCAN_DIR" cat-file -e "${_cached}^{commit}" 2>/dev/null; then
+      hash="$_cached"; BASELINE_SRC="CI缓存"
+      log "平台基线缺失(增量任务后平台不回写), 回退CI缓存基线: ${hash}"
+    fi
+  fi
+  echo "上次扫描 hash(${BASELINE_SRC}): ${hash}"
   if [ "$hash" != "null" ] && [ -n "$hash" ]; then
     git -C "$SCAN_DIR" diff --name-only "${hash}" "${last_commit}" > "$DIFF_FILE" || true
     if [ -s "$DIFF_FILE" ]; then
       log "存在变更文件 → 增量扫描"; cat "$DIFF_FILE"
       increment=1
-      SCAN_TYPE_DESC="增量扫描(基线 ${hash} → ${last_commit})"
+      SCAN_TYPE_DESC="增量扫描(基线[${BASELINE_SRC}] ${hash:0:8} → ${last_commit:0:8})"
     else
       log "无文件变更 → 按全量提交"
     fi
   else
-    log "平台无扫描基线(首次) → 全量扫描"
+    log "无扫描基线(首次) → 全量扫描"
   fi
 fi
 [ -f "$DIFF_FILE" ] || echo "" > "$DIFF_FILE"
@@ -553,6 +568,11 @@ if [ "$bypassed" = "1" ]; then
   exit 0
 fi
 
+# 任务完成 → 回写CI侧基线缓存(增量任务平台不回写gitHash, 下次据此延续增量)
+if [ "${taskId}" != "0" ] && [ -n "${taskId}" ]; then
+  mkdir -p "$BASELINE_CACHE_DIR" 2>/dev/null && echo "$last_commit" > "${BASELINE_CACHE_DIR}/${SAFE_NAME}" 2>/dev/null || true
+fi
+
 # 汇总各级缺陷数（openJenkinsFlawInfoMap按BUG/VULNERABILITY/CODE_SMELL分类，逐项相加）
 result_resp="$response"
 SUPER_COUNT=$(sast_jq "$result_resp" '[.data.openJenkinsFlawInfoMap[].superCount] | add // 0')
@@ -561,18 +581,22 @@ MIDDLE_COUNT=$(sast_jq "$result_resp" '[.data.openJenkinsFlawInfoMap[].middleCou
 LOW_COUNT=$(sast_jq "$result_resp" '[.data.openJenkinsFlawInfoMap[].lowCount] | add // 0')
 log "缺陷统计: 超危=${SUPER_COUNT} 高危=${HIGH_COUNT} 中危=${MIDDLE_COUNT} 低危=${LOW_COUNT}"
 
-log "生成检测报告(类型=${SAST_REPORT_KIND}: DEFECT=详情报告, ANALYSE=概要报告)..."
+log "生成检测报告(类型=${SAST_REPORT_KIND}: ANALYSE=概要 DEFECT=详情 BOTH=双报告; 审计状态=${SAST_REPORT_AUDIT_STATUS})..."
 enc_name=$(urlencode "${APP_NAME}")
-report_pdf="${REPORT_DIR}/sast_report.pdf"
-gen_report_via_common() {  # common 端点(支持 reportComponent) → 输出 reportId 或空
-  local resp rid
+report_pdf=""
+report_pdf_detail=""
+AUDIT_STATUS_JSON=$(printf '%s' "${SAST_REPORT_AUDIT_STATUS}" | tr -d ' ' \
+  | jq -R 'split(",") | map(select(test("^[0-9]+$")) | tonumber)' 2>/dev/null)
+[ -n "$AUDIT_STATUS_JSON" ] && [ "$AUDIT_STATUS_JSON" != "[]" ] || AUDIT_STATUS_JSON='[0,3,4,5,6]'
+gen_report_via_common() {  # $1=reportComponent $2=报告名后缀 → 输出 reportId 或空
+  local rc="$1" resp rid
   resp=$(sast_curl --request POST --url "${SAST_URL}/sast/api-v1/open-api/defect/common/generate/report" \
     -H "Sast-Token: ${SAST_TOKEN}" -H "Content-Type: application/json" \
-    -d "$(jq -n --arg rc "${SAST_REPORT_KIND}" --arg rn "${APP_NAME}" \
-        --arg app "${poll_app}" --arg tid "${taskId}" \
-        '{reportType:1, reportName:$rn, appId:$app, taskId:$tid, reportComponent:$rc}')")
+    -d "$(jq -n --arg rc "$rc" --arg rn "${APP_NAME}${2}" \
+        --arg app "${poll_app}" --arg tid "${taskId}" --argjson ast "${AUDIT_STATUS_JSON}" \
+        '{reportType:1, reportName:$rn, appId:$app, taskId:$tid, reportComponent:$rc, auditStatusType:$ast}')")
   rid=$(sast_jq "$resp" '.data')
-  { [ -n "$rid" ] && [ "$rid" != "null" ]; } || { warn "common端点未受理: $(echo "$resp" | head -c 150)"; echo ""; return; }
+  { [ -n "$rid" ] && [ "$rid" != "null" ]; } || { warn "common端点未受理(${rc}): $(echo "$resp" | head -c 150)"; echo ""; return; }
   echo "$rid"
 }
 gen_report_via_blue() {  # 旧 blue 端点兜底(4.x) → 输出 reportId 或空
@@ -584,37 +608,57 @@ gen_report_via_blue() {  # 旧 blue 端点兜底(4.x) → 输出 reportId 或空
   { [ -n "$rid" ] && [ "$rid" != "null" ]; } || { warn "blue端点未受理: $(echo "$resp" | head -c 150)"; echo ""; return; }
   echo "$rid"
 }
-REPORT_ID=$(gen_report_via_common)
-[ -z "$REPORT_ID" ] && REPORT_ID=$(gen_report_via_blue)
-if [ -z "$REPORT_ID" ]; then
-  warn "报告创建失败，跳过报告下载(可在平台 检测报告 页面手动生成)"
-else
-  log "报告生成中 (reportId=${REPORT_ID})"
-  r_status=""; r_start=$(date +%s)
+wait_and_download() {  # $1=reportId $2=目标文件
+  local rid="$1" out="$2" r_status="" r_start=$(date +%s)
   while [ "$r_status" != "2" ]; do
     sleep 5
     r_status=$(sast_curl --request GET \
-        --url "${SAST_URL}/sast/api-v1/open-api/defect/common/generate/report/status?reportId=${REPORT_ID}" \
+        --url "${SAST_URL}/sast/api-v1/open-api/defect/common/generate/report/status?reportId=${rid}" \
         -H "Sast-Token: ${SAST_TOKEN}" | jq -r '.data.status // 0' 2>/dev/null)
-    if [ $(( $(date +%s) - r_start )) -gt 600 ]; then warn "报告生成超时(10分钟，详情报告较大属正常，可稍后在平台下载)，跳过"; break; fi
+    if [ $(( $(date +%s) - r_start )) -gt 600 ]; then warn "报告生成超时(10分钟，详情报告较大属正常，可稍后在平台下载)，跳过"; return; fi
   done
-  if [ "$r_status" = "2" ]; then
+  if [ "$r_status" = "3" ]; then warn "平台报告生成失败(status=3): ${out}"; return; fi
+  sast_curl --request GET \
+      --url "${SAST_URL}/sast/api-v1/open-api/defect/common/download/report?reportId=${rid}" \
+      -H "Sast-Token: ${SAST_TOKEN}" -o "$out"
+  if head -c 4 "$out" 2>/dev/null | grep -q "%PDF"; then
+    log "PDF报告已下载: ${out} ($(du -h "$out" | cut -f1))"
+  else
+    warn "common下载失败，尝试blue端点..."
     sast_curl --request GET \
-        --url "${SAST_URL}/sast/api-v1/open-api/defect/common/download/report?reportId=${REPORT_ID}" \
-        -H "Sast-Token: ${SAST_TOKEN}" -o "$report_pdf"
-    if head -c 4 "$report_pdf" 2>/dev/null | grep -q "%PDF"; then
-      log "PDF报告已下载: ${report_pdf} ($(du -h "$report_pdf" | cut -f1))"
-    else
-      warn "common下载失败，尝试blue端点..."
-      sast_curl --request GET \
-        --url "${SAST_URL}/sast/api-v1/open-api/defect/blue/download/report?reportId=${REPORT_ID}" \
-        -H "Sast-Token: ${SAST_TOKEN}" -o "$report_pdf"
-      head -c 4 "$report_pdf" 2>/dev/null | grep -q "%PDF" && log "PDF报告已下载: ${report_pdf}" || warn "报告下载失败(保留平台侧报告记录)"
-    fi
-  elif [ "$r_status" = "3" ]; then
-    warn "平台报告生成失败(status=3)"
+      --url "${SAST_URL}/sast/api-v1/open-api/defect/blue/download/report?reportId=${rid}" \
+      -H "Sast-Token: ${SAST_TOKEN}" -o "$out"
+    head -c 4 "$out" 2>/dev/null | grep -q "%PDF" && log "PDF报告已下载: ${out}" || warn "报告下载失败(保留平台侧报告记录)"
   fi
-fi
+}
+case "${SAST_REPORT_KIND}" in
+  DEFECT)  # 仅详情报告(带审计状态过滤)
+    REPORT_ID=$(gen_report_via_common DEFECT "")
+    [ -z "$REPORT_ID" ] && REPORT_ID=$(gen_report_via_blue)
+    if [ -n "$REPORT_ID" ]; then
+      report_pdf_detail="${REPORT_DIR}/sast-report-defects.pdf"
+      wait_and_download "$REPORT_ID" "$report_pdf_detail"
+    else
+      warn "报告创建失败，跳过报告下载(可在平台 检测报告 页面手动生成)"
+    fi
+    ;;
+  BOTH)    # 概要(管理层视图) + 重点详情(审计过滤后) 双报告; 先发详情生成请求(耗时)再取概要
+    RID_D=$(gen_report_via_common DEFECT "(重点)")
+    RID_A=$(gen_report_via_common ANALYSE "(概要)")
+    [ -n "$RID_A" ] && { report_pdf="${REPORT_DIR}/sast-report.pdf"; wait_and_download "$RID_A" "$report_pdf"; }
+    [ -n "$RID_D" ] && { report_pdf_detail="${REPORT_DIR}/sast-report-defects.pdf"; wait_and_download "$RID_D" "$report_pdf_detail"; }
+    ;;
+  *)       # ANALYSE(默认): 图表化概要, 研发/管理层一眼看到重点
+    REPORT_ID=$(gen_report_via_common ANALYSE "")
+    [ -z "$REPORT_ID" ] && REPORT_ID=$(gen_report_via_blue)
+    if [ -n "$REPORT_ID" ]; then
+      report_pdf="${REPORT_DIR}/sast-report.pdf"
+      wait_and_download "$REPORT_ID" "$report_pdf"
+    else
+      warn "报告创建失败，跳过报告下载(可在平台 检测报告 页面手动生成)"
+    fi
+    ;;
+esac
 
 # ---- ⑥½ 全缺陷+全跟踪路径导出(数量不限; PDF详情报告的补充数据面) ----
 DEFECTS_JSON_FILE=""; DEFECTS_HTML_FILE=""
@@ -623,21 +667,25 @@ if [ "${EXPORT_DEFECTS}" = "1" ] && [ "${taskId}" != "0" ] && [ -n "${taskId}" ]
   mkdir -p "$EXPORT_DIR"
   DEFECTS_JSON_FILE="${EXPORT_DIR}/sast-defects-full.json"
   DEFECTS_HTML_FILE="${EXPORT_DIR}/sast-defects-full.html"
-  _d_page=1; _d_all="/tmp/sast-defects-$$.jsonl"; : > "$_d_all"; _d_total=0
+  _d_page=1; _d_all="/tmp/sast-defects-$$.jsonl"; : > "$_d_all"; _d_total=0; _d_skip=0
   while :; do
-    _d_resp=$(sast_curl --url "${SAST_URL}/sast/api-v1/open-api/defect/issue?taskId=${taskId}&isProblem=0&pageNum=${_d_page}&pageSize=${DEFECTS_PAGE_SIZE}" --header "Sast-Token: ${SAST_TOKEN}")
+    # 不传 isProblem: 该参数=0 时平台只返回未审计项, 会把已审计分级项(3~6)一并滤掉
+    _d_resp=$(sast_curl --url "${SAST_URL}/sast/api-v1/open-api/defect/issue?taskId=${taskId}&pageNum=${_d_page}&pageSize=${DEFECTS_PAGE_SIZE}" --header "Sast-Token: ${SAST_TOKEN}")
     if [ "$(sast_jq "$_d_resp" '.code')" != "0" ]; then
       warn "缺陷清单第${_d_page}页拉取失败: $(echo "$_d_resp" | head -c 120)"; break
     fi
     _d_cnt=$(echo "$_d_resp" | jq -r '.data.records | length' 2>/dev/null)
-    echo "$_d_resp" | jq -c '.data.records[]?' >> "$_d_all" 2>/dev/null
-    _d_total=$((_d_total + _d_cnt))
+    # 与报告口径一致: 剔除 auditStatus=1(已审计-误报)/2(已审计-忽略)
+    echo "$_d_resp" | jq -c --argjson ast "${AUDIT_STATUS_JSON}" '.data.records[]? | .auditStatus as $s | select(($ast | index($s)) != null)' >> "$_d_all" 2>/dev/null
+    _d_keep=$(echo "$_d_resp" | jq --argjson ast "${AUDIT_STATUS_JSON}" '[.data.records[]? | .auditStatus as $s | select(($ast | index($s)) != null)] | length' 2>/dev/null)
+    _d_total=$((_d_total + ${_d_keep:-0}))
+    _d_skip=$((_d_skip + ${_d_cnt:-0} - ${_d_keep:-0}))
     _d_sum=$(sast_jq "$_d_resp" '.data.total'); _d_sum=${_d_sum:-0}; [ "$_d_sum" = "null" ] && _d_sum=0
     [ "$_d_cnt" -lt "${DEFECTS_PAGE_SIZE}" ] && break
-    [ "$_d_total" -ge "$_d_sum" ] && break
+    [ $(( _d_total + _d_skip )) -ge "$_d_sum" ] && break
     _d_page=$((_d_page + 1))
   done
-  log "缺陷清单共 ${_d_total} 条，开始拉取跟踪路径(并发=${TRACE_CONCURRENCY})..."
+  log "缺陷清单共 ${_d_total} 条（已剔除误报/忽略 ${_d_skip} 条），开始拉取跟踪路径(并发=${TRACE_CONCURRENCY})..."
   _tr_dir="/tmp/sast-traces-$$"; mkdir -p "$_tr_dir"
   export SAST_URL SAST_TOKEN TLS_FLAGS
   _fetch_trace() {
@@ -756,7 +804,9 @@ RAW_RESULT_JSON=$(jq -n \
   --arg reporturl "${SAST_URL}/detection/code" \
   --arg project "${SAST_PROJECT_NAME:-快速检测}" \
   --arg reportkind "${SAST_REPORT_KIND}" \
+  --arg reportaudit "${SAST_REPORT_AUDIT_STATUS}" \
   --arg reportfile "${report_pdf:-}" \
+  --arg reportdetail "${report_pdf_detail:-}" \
   --arg defectsfile "${DEFECTS_JSON_FILE:-}" \
   --arg defectshtml "${DEFECTS_HTML_FILE:-}" \
   --argjson sup "${SUPER_COUNT:-0}" --argjson high "${HIGH_COUNT:-0}" \
@@ -767,7 +817,9 @@ RAW_RESULT_JSON=$(jq -n \
     reportUrl:$reporturl, detailUrl:$detailurl, incremental:($increment=="1"),
     sku:(if $sku!="" then $sku else null end), biz:(if $biz!="" then $biz else null end),
     projectName:$project,
-    reportKind:$reportkind, reportFile:$reportfile,
+    reportKind:$reportkind, reportAuditStatus:$reportaudit,
+    reportFiles:[$reportfile, $reportdetail] | map(select(length>0)),
+    reportFile:$reportfile,
     defectsFile:$defectsfile, defectsHtml:$defectshtml,
     defectCount:{super:$sup, high:$high, middle:$mid, low:$low},
     gateResult:$gate, buildUrl:$build}')
@@ -781,7 +833,8 @@ echo "  灵脉CodeAI 扫描结果   appId=${poll_app}  taskId=${taskId}"
 echo "  扫描方式: ${SCAN_TYPE_DESC}"
 echo "  超危: ${SUPER_COUNT}   高危: ${HIGH_COUNT}   中危: ${MIDDLE_COUNT}   低危: ${LOW_COUNT}"
 echo "  质量门禁: ${GATE_RESULT}"
-echo "  报告类型: ${SAST_REPORT_KIND}(DEFECT=详情)"
+echo "  报告类型: ${SAST_REPORT_KIND} (ANALYSE=概要 DEFECT=详情 BOTH=双报告)"
+echo "  报告审计状态: ${SAST_REPORT_AUDIT_STATUS} (1=已审计-误报 2=已审计-忽略 已排除)"
 [ -n "${DEFECTS_JSON_FILE:-}" ] && echo "  全缺陷+跟踪路径: ${DEFECTS_JSON_FILE} + ${DEFECTS_HTML_FILE}"
 echo "  平台地址: ${SAST_URL}"
 echo "======================================================"

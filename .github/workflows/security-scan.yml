@@ -7,8 +7,9 @@
 #                  仓库协作人→项目成员) + 详情报告 + 全缺陷跟踪路径导出
 #    job2 sca    : SCA 依赖扫描 + 项目自动纳管v2 + 检测报告 + SBOM(SPDX)+VEX 导出
 #    job3 report : 聚合两个 job 的产物统一归档 + 推送聚合钉钉卡片(sec-notify)
-#  前提: 客户内网自建 runner（能连通 CodeAI/SCA 平台地址和钉钉 webhook 公网地址），
+#  前提: GitHub 托管 runner（ubuntu-latest，平台地址需公网可达），
 #        仓库内已放置 sec-kit/。schedule 仅对默认分支上的本文件生效。
+#        增量基线用 actions/cache 跨次保留(.sast-baseline)，摆脱对平台回写的依赖。
 #  触发面(故意收敛, 勿随意加回): 功能分支只走 PR 流水线，push 只挂主干+tag。
 #  变量: 非敏感项配 GitHub → Settings → Secrets and variables → Actions → Variables
 #        令牌等敏感项配同页 Secrets。命名对照见 ../config.env.example 末节。
@@ -43,20 +44,24 @@ jobs:
   # Job 1/3 · 灵脉CodeAI SAST（与 SCA 并行执行）
   # ==========================================================================
   sast:
-    runs-on: [self-hosted]
+    runs-on: ubuntu-latest
     timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0            # 完整克隆：保证跨提交 git diff 增量可用(勿改)
 
+      # 增量基线跨次缓存: 平台在增量任务后不回写gitHash，CI侧缓存兜底(见 bin/codeai-incremental-scan.sh 步骤④)
+      - name: 恢复增量基线缓存
+        uses: actions/cache@v4
+        with:
+          path: .sast-baseline
+          key: sast-baseline-${{ github.event.repository.name }}-${{ github.run_id }}
+          restore-keys: sast-baseline-${{ github.event.repository.name }}-
+
       - name: 依赖自检 (curl/jq/zip/git/python3)
         run: |
-          miss=0
-          for c in curl jq zip git python3; do command -v $c >/dev/null 2>&1 || miss=1; done
-          [ "$miss" = "0" ] || { sudo apt-get update -qq 2>/dev/null; for c in curl jq zip git python3; do
-            command -v $c >/dev/null 2>&1 || sudo apt-get install -y "$c" 2>/dev/null || sudo yum install -y "$c"; done; }
-          for c in curl jq zip git python3; do command -v $c >/dev/null 2>&1 || { echo "缺少 $c 且自动安装失败，请在 runner 上预装"; exit 1; }; done
+          for c in curl jq zip git python3; do command -v $c >/dev/null 2>&1 || { echo "缺少 $c"; exit 1; }; done
 
       - name: 计算触发模式与应用名 + 解析仓库协作人
         env:
@@ -130,7 +135,8 @@ jobs:
           BY_PASS: "1"
           BY_PASS_TIMEOUT_MINUTES: ${{ vars.SAST_TIMEOUT_MINUTES }}
           TLS_INSECURE: ${{ vars.TLS_INSECURE || '0' }}
-          SAST_REPORT_KIND: DEFECT                              # DEFECT=详情报告(每缺陷类型全量条目)
+          SAST_REPORT_KIND: BOTH   # BOTH=概要(sast-report.pdf)+重点详情(sast-report-defects.pdf)；ANALYSE=仅概要
+          SAST_REPORT_AUDIT_STATUS: ${{ vars.SAST_REPORT_AUDIT_STATUS || '0,3,4,5,6' }}  # 详情报告含未审计+已审计分级，排除误报(1)/忽略(2)
           EXPORT_DEFECTS: "1"                                   # 全缺陷+全跟踪路径 JSON/HTML 归档
           RESULT_JSON_FILE: sec-results/codeai-result.json
           GIT_BRANCH: ${{ env.SCAN_BRANCH }}
@@ -147,7 +153,7 @@ jobs:
         with:
           name: sec-artifacts-sast
           path: |
-            sast_report.pdf
+            sast-report*.pdf
             sec-results/
           retention-days: 30
           if-no-files-found: ignore
@@ -156,7 +162,7 @@ jobs:
   # Job 2/3 · 源鉴SCA（与 SAST 并行执行）
   # ==========================================================================
   sca:
-    runs-on: [self-hosted]
+    runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -165,11 +171,7 @@ jobs:
 
       - name: 依赖自检 (curl/jq/python3)
         run: |
-          miss=0
-          for c in curl jq python3; do command -v $c >/dev/null 2>&1 || miss=1; done
-          [ "$miss" = "0" ] || { sudo apt-get update -qq 2>/dev/null; for c in curl jq python3; do
-            command -v $c >/dev/null 2>&1 || sudo apt-get install -y "$c" 2>/dev/null || sudo yum install -y "$c"; done; }
-          for c in curl jq python3; do command -v $c >/dev/null 2>&1 || { echo "缺少 $c 且自动安装失败，请在 runner 上预装"; exit 1; }; done
+          for c in curl jq python3; do command -v $c >/dev/null 2>&1 || { echo "缺少 $c"; exit 1; }; done
 
       - name: 计算应用名与协作人
         env:
@@ -268,7 +270,7 @@ jobs:
   report:
     needs: [sast, sca]
     if: ${{ always() && !cancelled() }}
-    runs-on: [self-hosted]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -290,7 +292,7 @@ jobs:
           done
           [ -d all-results/sec-artifacts-sca ] && [ ! -d all-results/sec-artifacts-sca/sec-results ] \
             && cp -a all-results/sec-artifacts-sca/. sec-results/ || true
-          find all-results -maxdepth 3 -name 'sast_report.pdf' -exec cp -f {} . \; 2>/dev/null || true
+          find all-results -maxdepth 3 -name 'sast-report*.pdf' -exec cp -f {} . \; 2>/dev/null || true
           echo "---- 合并后的 sec-results ----"
           ls -la sec-results/ || true
 
@@ -310,7 +312,7 @@ jobs:
         with:
           name: security-reports
           path: |
-            sast_report.pdf
+            sast-report*.pdf
             sec-results/
           retention-days: 30
           if-no-files-found: ignore
