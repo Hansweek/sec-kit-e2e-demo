@@ -86,7 +86,7 @@ POLL_INTERVAL="${POLL_INTERVAL:-30}"      # 轮询间隔秒数
 REPORT_DIR="${REPORT_DIR:-$SCAN_DIR}"     # PDF 报告落盘目录
 RESULT_JSON_FILE="${RESULT_JSON_FILE:-}"  # 结构化结果JSON落盘路径(供下游消费，可留空)
 # ---- v2: 报告与导出 ----
-SAST_REPORT_KIND="${SAST_REPORT_KIND:-ANALYSE}"  # ANALYSE=概要报告(默认,图表化重点视图) DEFECT=详情报告 BOTH=概要+重点详情双报告
+SAST_REPORT_KIND="${SAST_REPORT_KIND:-DEFECT}"   # DEFECT=详情报告(默认,研发修复清单;增量任务=本次新增缺陷,正是开发要修的) ANALYSE=概要报告 BOTH=双报告
 BASELINE_CACHE_DIR="${BASELINE_CACHE_DIR:-$SCAN_DIR/.sast-baseline}"  # CI侧增量基线缓存(平台基线缺失时兜底, CI缓存跨次保留)
 # 报告包含的审计状态(平台审计状态枚举 0未审计 1已审计-误报 2已审计-忽略 3超危 4高危 5中危 6低危 7已修复)
 # 默认排除 1(误报) 2(忽略)：已判定为非问题的条目不再进入报告与缺陷清单
@@ -634,11 +634,11 @@ wait_and_download() {  # $1=reportId $2=目标文件
   fi
 }
 case "${SAST_REPORT_KIND}" in
-  DEFECT)  # 仅详情报告(带审计状态过滤)
+  DEFECT)  # 仅详情报告(带审计状态过滤: 误报/忽略/已修复不入报告)
     REPORT_ID=$(gen_report_via_common DEFECT "")
     [ -z "$REPORT_ID" ] && REPORT_ID=$(gen_report_via_blue)
     if [ -n "$REPORT_ID" ]; then
-      report_pdf_detail="${REPORT_DIR}/sast-report-defects.pdf"
+      report_pdf_detail="${REPORT_DIR}/sast-report.pdf"
       wait_and_download "$REPORT_ID" "$report_pdf_detail"
     else
       warn "报告创建失败，跳过报告下载(可在平台 检测报告 页面手动生成)"

@@ -135,7 +135,7 @@ jobs:
           BY_PASS: "1"
           BY_PASS_TIMEOUT_MINUTES: ${{ vars.SAST_TIMEOUT_MINUTES }}
           TLS_INSECURE: ${{ vars.TLS_INSECURE || '0' }}
-          SAST_REPORT_KIND: BOTH   # BOTH=概要(sast-report.pdf)+重点详情(sast-report-defects.pdf)；ANALYSE=仅概要
+          SAST_REPORT_KIND: DEFECT  # 详情报告(研发修复清单; 增量任务=本次新增缺陷)
           SAST_REPORT_AUDIT_STATUS: ${{ vars.SAST_REPORT_AUDIT_STATUS || '0,3,4,5,6' }}  # 详情报告含未审计+已审计分级，排除误报(1)/忽略(2)
           EXPORT_DEFECTS: "1"                                   # 全缺陷+全跟踪路径 JSON/HTML 归档
           RESULT_JSON_FILE: sec-results/codeai-result.json
@@ -213,6 +213,7 @@ jobs:
           GIT_BRANCH: ${{ env.SCAN_BRANCH }}
           GIT_COMMIT: ${{ github.sha }}
           GIT_AUTHOR: ${{ github.actor }}
+          BUILD_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           # 门禁开关解析(总开关+组件级覆盖)
           _gnorm() { case "${1:-}" in 1|true|True|TRUE|y|Y|yes) echo 1;; 0|false|False|FALSE|n|N|no) echo 0;; *) echo "";; esac; }
@@ -271,7 +272,7 @@ jobs:
     needs: [sast, sca]
     if: ${{ always() && !cancelled() }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25   # SCA统计聚合慢时通知阶段兜底补查最长约10分钟
     steps:
       - uses: actions/checkout@v4
         with:

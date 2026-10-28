@@ -176,6 +176,9 @@ derive_biz_identity() {
     esac
   fi
   SEC_META="sec=kit;repo=${REPO_IDENT:-$(basename "$PWD")};branch=${GIT_BRANCH_NAME:-}"
+  # 版本追溯三元组: 平台版本号自增(N#时间戳, add2无版本参数), commit/构建号落描述供平台检索与管理筛选
+  [ -n "${GIT_COMMIT:-}" ] && SEC_META="${SEC_META};commit=${GIT_COMMIT:0:8}"
+  [ -n "${BUILD_URL:-}" ] && SEC_META="${SEC_META};build=${BUILD_URL}"
   [ -n "$BIZ_LINE" ] && SEC_META="${SEC_META};biz=${BIZ_LINE}"
   [ -n "$SKU_ID" ]   && SEC_META="${SEC_META};sku=${SKU_ID}"
   [ -n "${CI_PLATFORM:-}" ] && SEC_META="${SEC_META};ci=${CI_PLATFORM}"
