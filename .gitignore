@@ -1,0 +1,7 @@
+sec-results/
+.sast-baseline/
+gh-artifacts/
+gh-sca/
+provision.env
+*.log
+*.zip
