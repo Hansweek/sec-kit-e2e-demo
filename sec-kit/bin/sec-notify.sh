@@ -159,7 +159,10 @@ if [ "$(echo "$SAST" | jq -r '.appName // empty')" != "" ]; then
   # 增量口径注记(短): 平铺文案避免嵌套括号
   mode_txt="$mode"
   [ "$is_inc" = "true" ] && mode_txt="增量扫描·仅变更文件"
-  detail_url=$(echo "$SAST" | jq -r '.detailUrl // empty')
+  detail_url=$(echo "$SAST" | jq -r '.shareUrl // empty')   # 免登录分享链接优先(客户实测公式)
+  sast_link_label="SAST 缺陷详情与跟踪路径 →"
+  if [ -n "$detail_url" ]; then sast_link_label="SAST 缺陷详情（免登录直达） →"
+  else detail_url=$(echo "$SAST" | jq -r '.detailUrl // empty'); fi
   [ -z "$detail_url" ] && detail_url=$(echo "$SAST" | jq -r '.reportUrl // empty')
   case "$gate" in
     *不通过*) verdict_tag="⛔ 门禁未通过"; GATE_LINES="- 源码门禁：⛔ 未通过" ;;
@@ -261,7 +264,7 @@ BODY="## ${REPO_LABEL:-应用} · 安全扫描 ${verdict_tag}
 - 📦 组件检测: 漏洞 ${sca_v:-0}（🔴${sca_vs:-0} 🟠${sca_vh:-0} 🟡${sca_vm:-0} ⚪${sca_vl:-0}）
 - 组件 ${sca_comp:-0} 个（🔴${sca_cs:-0} 🟠${sca_ch:-0} 🟡${sca_cm:-0} ✅${sca_cn:-0}）｜ 许可证 ${sca_lic:-0} 项（🔴高风险 ${sca_lh:-0}）
 ${sca_line:+- [SCA 检测报告（免登录直达） →](${sca_line})
-}${sast_url_line:+- [SAST 缺陷详情与跟踪路径 →](${sast_url_line})
+}${sast_url_line:+- [${sast_link_label}](${sast_url_line})
 }- 📎 产物已归档: ${SBOM_SHORT:-SPDX SBOM · CSAF VEX · PDF · Excel}${BUILD_URL:+
 - [全套报告下载 →](${BUILD_URL})}"
 

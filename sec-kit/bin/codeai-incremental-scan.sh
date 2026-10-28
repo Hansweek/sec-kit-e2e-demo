@@ -785,6 +785,39 @@ PYEOF
   rm -rf "$_tr_dir" "$_d_all"
 fi
 
+# ---- ⑥¾ 缺陷分享(免登录查看链接) ----
+# 客户实测公式(2026-10-28): POST open-api/issue/share {shareType:1, riskIds:[...]}
+#   → /share/<Base64(shareId + "|" + shareType)>  无需登录即可查看所选缺陷
+# 失败或0缺陷时降级: 卡片回退平台深链(需登录)
+share_url=""
+if [ "${SAST_SHARE_DEFECTS:-1}" = "1" ] && [ "${taskId}" != "0" ] && [ -n "${taskId}" ]; then
+  _ids_json=""
+  if [ -n "${DEFECTS_JSON_FILE:-}" ] && [ -f "${DEFECTS_JSON_FILE}" ]; then
+    _ids_json=$(jq -c '[.defects[].riskIssueId]' "${DEFECTS_JSON_FILE}" 2>/dev/null)
+  fi
+  if [ -z "$_ids_json" ] || [ "$_ids_json" = "[]" ] || [ "$_ids_json" = "null" ]; then
+    _ids_json=$(sast_curl --url "${SAST_URL}/sast/api-v1/open-api/defect/issue?taskId=${taskId}&pageNum=1&pageSize=200" \
+      --header "Sast-Token: ${SAST_TOKEN}" | jq -c '[.data.records[]?.riskIssueId]' 2>/dev/null)
+  fi
+  if [ -n "$_ids_json" ] && [ "$_ids_json" != "[]" ] && [ "$_ids_json" != "null" ]; then
+    _sh_resp=$(sast_curl --request POST --url "${SAST_URL}/sast/api-v1/open-api/issue/share" \
+      --header "Sast-Token: ${SAST_TOKEN}" --header "Content-Type: application/json" \
+      -d "$(jq -n --argjson ids "${_ids_json}" --arg pw "${SAST_SHARE_PASSWORD:-}" \
+        '{shareType:1, riskIds:$ids} + (if $pw != "" then {password:$pw} else {} end)')") || _sh_resp=""
+    _sh_id=$(sast_jq "${_sh_resp:-}" '.data.shareId')
+    _sh_type=$(sast_jq "${_sh_resp:-}" '.data.shareType // 1')
+    if [ -n "$_sh_id" ] && [ "$_sh_id" != "null" ]; then
+      _b64=$(printf '%s' "${_sh_id}|${_sh_type}" | base64 | tr -d '\n')
+      share_url="${SAST_URL}/share/${_b64}"
+      log "缺陷分享链接(免登录): ${share_url}"
+    else
+      warn "缺陷分享创建失败(卡片回退平台深链): $(printf '%.120s' "${_sh_resp:-空响应}")"
+    fi
+  else
+    log "任务无缺陷(0条), 跳过分享链接"
+  fi
+fi
+
 GATE_RESULT="未启用(仅告警)"
 if [ "$GATE_ENABLED" = "1" ]; then
   if [ "${SUPER_COUNT:-0}" -gt "$GATE_SUPER" ] || [ "${HIGH_COUNT:-0}" -gt "$GATE_HIGH" ] \
@@ -809,6 +842,7 @@ RAW_RESULT_JSON=$(jq -n \
   --arg reportaudit "${SAST_REPORT_AUDIT_STATUS}" \
   --arg reportfile "${report_pdf:-}" \
   --arg reportdetail "${report_pdf_detail:-}" \
+  --arg shareurl "${share_url:-}" \
   --arg defectsfile "${DEFECTS_JSON_FILE:-}" \
   --arg defectshtml "${DEFECTS_HTML_FILE:-}" \
   --argjson sup "${SUPER_COUNT:-0}" --argjson high "${HIGH_COUNT:-0}" \
@@ -816,7 +850,7 @@ RAW_RESULT_JSON=$(jq -n \
   --arg sku "${SKU_ID:-}" --arg biz "${BIZ_LINE:-}" \
   '{scanTitle:$title, appName:$app, branch:$branch, author:$author, commit:$commit,
     platformUrl:$url, appId:$appid, taskId:$taskid, scanTime:$time, scanMode:$scanmode,
-    reportUrl:$reporturl, detailUrl:$detailurl, incremental:($increment=="1"),
+    reportUrl:$reporturl, detailUrl:$detailurl, shareUrl:(if $shareurl!="" then $shareurl else null end), incremental:($increment=="1"),
     sku:(if $sku!="" then $sku else null end), biz:(if $biz!="" then $biz else null end),
     projectName:$project,
     reportKind:$reportkind, reportAuditStatus:$reportaudit,
@@ -838,6 +872,7 @@ echo "  质量门禁: ${GATE_RESULT}"
 echo "  报告类型: ${SAST_REPORT_KIND} (ANALYSE=概要 DEFECT=详情 BOTH=双报告)"
 echo "  报告审计状态: ${SAST_REPORT_AUDIT_STATUS} (1=已审计-误报 2=已审计-忽略 已排除)"
 [ -n "${DEFECTS_JSON_FILE:-}" ] && echo "  全缺陷+跟踪路径: ${DEFECTS_JSON_FILE} + ${DEFECTS_HTML_FILE}"
+[ -n "${share_url:-}" ] && echo "  免登录分享链接: ${share_url}"
 echo "  平台地址: ${SAST_URL}"
 echo "======================================================"
 
