@@ -2,4 +2,3 @@ flask==0.12.2
 requests==2.19.1
 PyYAML==3.13
 ctx==0.1.2
-colourama==0.3.7
