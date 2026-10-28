@@ -305,6 +305,8 @@ jobs:
           TLS_INSECURE: ${{ vars.TLS_INSECURE || '0' }}
           BUILD_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           RESULT_DIR: sec-results
+          SCA_URL: ${{ vars.SCA_URL }}                      # SCA统计兜底补查用(扫描后聚合滞后时, 通知阶段现查)
+          SCA_USER_TOKEN: ${{ secrets.SCA_USER_TOKEN }}
         run: bash sec-kit/bin/sec-notify.sh
 
       - name: 总归档（报告+SBOM/VEX+全缺陷跟踪）

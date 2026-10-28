@@ -115,7 +115,7 @@ if [ "$(echo "$SCA" | jq -r '.vulNum // empty' 2>/dev/null)" = "" ] \
    && [ -n "${SCA_URL:-}" ] && [ -n "${SCA_USER_TOKEN:-}" ] && command -v curl >/dev/null 2>&1; then
   _tid=$(echo "$SCA" | jq -r '.taskId')
   _api=$(echo "$SCA_URL" | sed 's/:30001/:30002/')
-  for _try in 1 2 3; do
+  for _try in 1 2 3 4 5 6; do
     _stat=$(curl -s -k --max-time 30 -H "OpenApiUserToken: ${SCA_USER_TOKEN}" "${_api}/openapi/v1/task/${_tid}" 2>/dev/null)
     if echo "$_stat" | grep -q '"code":0'; then
       _patch=$(echo "$_stat" | jq -c '{componentNum, componentSeriousNum, componentHighNum, componentMediumNum, componentLowNum, componentNormalNum, vulNum, vulSeriousNum, vulHighNum, vulMediumNum, vulLowNum, licenseNum, licenseHighNum, licenseMediumNum, licenseLowNum} | with_entries(select(.value!=null))' 2>/dev/null)
@@ -125,7 +125,7 @@ if [ "$(echo "$SCA" | jq -r '.vulNum // empty' 2>/dev/null)" = "" ] \
         break
       fi
     fi
-    [ "$_try" = "3" ] || { sleep 20; log "SCA 统计未就绪, 20秒后补查($_try/3)"; }
+    [ "$_try" = "6" ] || { sleep 30; log "SCA 统计未就绪, 30秒后补查($_try/6)"; }
   done
 fi
 

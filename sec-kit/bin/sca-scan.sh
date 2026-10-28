@@ -432,10 +432,11 @@ do_scan() {
   echo "======================================================"
   [ -n "${GATE_DETAIL:-}" ] && echo "---- 红线明细 ----" && echo "$GATE_DETAIL"
 
-  # ---- 任务统计(组件/漏洞计数, 供通知卡片与下游消费; 平台聚合滞后约30-60s, 就绪即断) ----
+  # ---- 任务统计(组件/漏洞计数, 供通知卡片与下游消费; 平台聚合滞后2-5分钟, 就绪即断) ----
+  # 2026-10-28 实测: 聚合可能晚于扫描完成3分钟以上, 15次x10s窗口不够 → 20次x15s(5分钟)
   STAT_JSON=""
   if command -v curl >/dev/null 2>&1; then
-    for _try in $(seq 1 15); do
+    for _try in $(seq 1 20); do
       _stat=$(curl -s -k --max-time 30 -H "OpenApiUserToken: ${SCA_USER_TOKEN}" \
         "${API_ROOT}/openapi/v1/task/${TASK_ID}" 2>/dev/null)
       if echo "$_stat" | grep -q '"code":0'; then
@@ -443,7 +444,8 @@ do_scan() {
         # vulNum 到位即认为统计已聚合完成
         [ "$(echo "$STAT_JSON" | jq -r '.vulNum // empty' 2>/dev/null)" != "" ] && break
       fi
-      sleep 10
+      [ $((_try % 5)) = "0" ] && log "统计聚合中(${_try}/20)..."
+      sleep 15
     done
     if [ "$(echo "$STAT_JSON" | jq -r '.vulNum // empty' 2>/dev/null)" != "" ]; then
       log "任务统计: 组件$(echo "$STAT_JSON"|jq -r '.componentNum')(🔴$(echo "$STAT_JSON"|jq -r '.componentSeriousNum // 0')/🟠$(echo "$STAT_JSON"|jq -r '.componentHighNum // 0')/🟡$(echo "$STAT_JSON"|jq -r '.componentMediumNum // 0')) 漏洞$(echo "$STAT_JSON"|jq -r '.vulNum')(严重$(echo "$STAT_JSON"|jq -r '.vulSeriousNum // 0')/高$(echo "$STAT_JSON"|jq -r '.vulHighNum // 0')/中$(echo "$STAT_JSON"|jq -r '.vulMediumNum // 0')/低$(echo "$STAT_JSON"|jq -r '.vulLowNum // 0')) 许可证$(echo "$STAT_JSON"|jq -r '.licenseNum // 0')(高风险$(echo "$STAT_JSON"|jq -r '.licenseHighNum // 0'))"
